@@ -1,0 +1,8 @@
+interface:
+  display_name: "AIRP Program Operations"
+  short_description: "Pre-model compact context for code tasks"
+  brand_color: "#315C96"
+  default_prompt: "Use $airp-program-operations and its precomputed context to analyze or change this repository."
+
+policy:
+  allow_implicit_invocation: true

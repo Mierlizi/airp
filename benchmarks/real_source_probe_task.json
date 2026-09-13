@@ -1,0 +1,3 @@
+[
+  {"id":"real-001","question":"Repository.context方法签名中的默认budget是多少？只返回整数。","expected":"3000"}
+]

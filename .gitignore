@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.airp/
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+benchmarks/corpus/
+benchmarks/corpus-large/
+benchmarks/runs/
+*.docx

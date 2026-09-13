@@ -1,0 +1,57 @@
+{
+  "generated_from": [
+    "large-repo-read-v32.json",
+    "python-edit-suppression-v26.json",
+    "multi-repo-edit-v19.json"
+  ],
+  "measurement": "input_tokens + output_tokens reported by paired Codex runs",
+  "valid_saving_rule": "Report a token saving only when baseline and AIRP satisfy the same rubric or executable validator.",
+  "experiments": [
+    {
+      "id": "v32-large-exact-read",
+      "model": "gpt-5.6-luna",
+      "effort": "low",
+      "tasks": 4,
+      "repositories": ["django", "nest", "ripgrep", "redis"],
+      "languages": ["Python", "TypeScript", "Rust", "C"],
+      "baseline": {"successes": 4, "tokens": 224923, "tool_calls": 9, "seconds": 139.454},
+      "airp": {"successes": 4, "tokens": 76852, "tool_calls": 1, "seconds": 90.219},
+      "token_reduction": 0.6583186245959729,
+      "language_token_reduction": {
+        "Python": 0.7057227429699062,
+        "TypeScript": 0.7675847423282053,
+        "Rust": 0.6923329466611219,
+        "C": 0.5044630546161772
+      }
+    },
+    {
+      "id": "v26-python-behavior-edit",
+      "model": "gpt-5.6-luna",
+      "effort": "low",
+      "tasks": 1,
+      "repositories": ["itsdangerous"],
+      "languages": ["Python"],
+      "baseline": {"successes": 1, "tokens": 294925, "tool_calls": 14, "seconds": 168.531},
+      "airp": {"successes": 1, "tokens": 79395, "tool_calls": 4, "seconds": 57.25},
+      "token_reduction": 0.7307959650758667
+    },
+    {
+      "id": "v19-multi-repository-mixed",
+      "model": "gpt-5.6-luna",
+      "effort": "low",
+      "tasks": 12,
+      "repositories": ["fd", "itsdangerous", "p-limit", "sds"],
+      "languages": ["Rust", "Python", "JavaScript", "C"],
+      "baseline": {"successes": 12, "tokens": 1217679, "tool_calls": 50, "seconds": 676.263},
+      "airp": {"successes": 12, "tokens": 991910, "tool_calls": 39, "seconds": 648.251},
+      "token_reduction": 0.18540929095434844,
+      "task_type_token_reduction": {"read_and_relation": 0.4666, "edit": 0.0622}
+    }
+  ],
+  "limitations": [
+    "The experiments are fixed task samples, not a population estimate for all coding work.",
+    "V32 contains four exact local reading tasks; its reduction must not be generalized to broad or large edits.",
+    "V26 contains one behavior edit and needs replication across languages and repositories.",
+    "V19 repositories contain 268 to 5054 production source lines; partial AIRP packs increased tokens in all three partial cases."
+  ]
+}

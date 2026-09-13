@@ -1,0 +1,20 @@
+[
+  {
+    "id": "context-001",
+    "symbol_id": "airp/core.py::Repository.context",
+    "question": "说明 context 方法使用什么预算单位，预算不足时如何处理目标符号，并说明它是否保证上下文充分。",
+    "required_terms": [["UTF-8"], ["完整符号", "不会截断", "不截断", "跳过无法完整放入", "跳过放不下"], ["不保证", "不能保证", "并不会保证"]]
+  },
+  {
+    "id": "context-002",
+    "symbol_id": "airp/core.py::Repository.commit",
+    "question": "说明 commit 成功前必须满足哪些验证和测试条件，以及它是否创建 Git commit。",
+    "required_terms": [["verify", "验证"], ["测试"], ["fingerprint", "指纹"], ["不创建", "不会创建", "不会实际创建"]]
+  },
+  {
+    "id": "context-003",
+    "symbol_id": "airp/graph.py::Extractor.visit_Call",
+    "question": "说明 visit_Call 会为哪些调用表达式记录 call edge、如何生成调用名称，以及其他调用表达式如何处理。",
+    "required_terms": [["ast.Name"], ["ast.Attribute"], ["ast.unparse"], ["不记录", "不会记录", "不会在此处记录", "不会由此方法直接记录", "不会由 visit_Call 记录", "不会由 visit_Call 直接记录", "不会由 `visit_Call` 记录", "不会由 `visit_Call` 直接记录", "不会被"]]
+  }
+]

@@ -1,0 +1,26 @@
+{
+  "name": "airp",
+  "version": "0.6.0+codex.20260913073156",
+  "description": "Pre-model, compact multi-language source context for Codex.",
+  "author": {
+    "name": "Mierlizi"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AIRP",
+    "shortDescription": "Inject compact source evidence before model execution.",
+    "longDescription": "AIRP indexes the active repository locally and injects task-specific source evidence before the first model request. Adaptive budgets preserve exact lookups, cross-file reasoning, and impact analysis without an extra model-tool-model round trip.",
+    "developerName": "AIRP",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Query",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Analyze this repository using the precomputed AIRP context.",
+      "Find this symbol and explain its dependencies.",
+      "Assess the impact of this code change."
+    ],
+    "brandColor": "#315C96"
+  }
+}

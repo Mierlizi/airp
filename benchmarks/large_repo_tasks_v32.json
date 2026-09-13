@@ -1,0 +1,50 @@
+[
+  {
+    "id": "django-queryset-get-multiple",
+    "repo": "django",
+    "language": "Python",
+    "source_loc": 532132,
+    "scale": "large",
+    "type": "read",
+    "category": "behavior",
+    "question": "Explain how QuerySet.get handles multiple matching objects.",
+    "rubric_scope": "all",
+    "rubric": ["MultipleObjectsReturned", "returned|matching", "num|count|limit|more than"]
+  },
+  {
+    "id": "nest-factory-create-sequence",
+    "repo": "nest",
+    "language": "TypeScript",
+    "source_loc": 133789,
+    "scale": "large",
+    "type": "read",
+    "category": "behavior",
+    "question": "Explain the main construction sequence in NestFactoryStatic.create.",
+    "rubric_scope": "all",
+    "rubric": ["adapter", "NestContainer|Nest container", "initialize", "NestApplication", "preloadLazyPackages|lazy packages", "createAdapterProxy|adapter proxy"]
+  },
+  {
+    "id": "ripgrep-pattern-matcher-variants",
+    "repo": "ripgrep",
+    "language": "Rust",
+    "source_loc": 56409,
+    "scale": "large",
+    "type": "read",
+    "category": "structure",
+    "question": "Which matcher variants does PatternMatcher support?",
+    "rubric_scope": "all",
+    "rubric": ["RustRegex", "PCRE2", "feature|cfg|conditional"]
+  },
+  {
+    "id": "redis-dictfind-lookup",
+    "repo": "redis",
+    "language": "C",
+    "source_loc": 383301,
+    "scale": "large",
+    "type": "read",
+    "category": "behavior",
+    "question": "Explain how dictFind locates and returns a key entry.",
+    "rubric_scope": "all",
+    "rubric": ["dictFindLink", "dereferenc|\\*link", "NULL"]
+  }
+]

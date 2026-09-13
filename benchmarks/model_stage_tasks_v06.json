@@ -1,0 +1,12 @@
+[
+  {"id":"mode-full","symbol_id":"airp/core.py::Repository._shape_task_response","retrieval_task":"inspect _shape_task_response response mode full","question":"response_mode 等于什么值时会原样返回完整 result？","expected":"full"},
+  {"id":"balanced-anchors","symbol_id":"airp/core.py::Repository.task_context","retrieval_task":"inspect task_context balanced anchor limit","question":"breadth=balanced 时最多选择几个任务锚点？只回答整数。","expected":"2"},
+  {"id":"fts-cap","symbol_id":"airp/core.py::Repository.task_matches","retrieval_task":"inspect task_matches FTS candidate limit cap 500","question":"FTS 候选池的硬上限是多少？只回答整数。","expected":"500"},
+  {"id":"receipt-ttl","symbol_id":"airp/core.py::Repository.save_receipt","retrieval_task":"inspect save_receipt expiration cutoff seconds","question":"receipt 的过期时间是多少秒？只回答整数。","expected":"86400"},
+  {"id":"test-output-limit","symbol_id":"airp/core.py::Repository.test","retrieval_task":"airp/core.py Repository.test read_limit 6000 bytes","question":"测试 output_mode=compact 时最多读取多少字节日志？只回答整数。","expected":"6000"},
+  {"id":"test-timeout-max","symbol_id":"airp/core.py::Repository.test","retrieval_task":"airp/core.py Repository.test timeout validation 600","question":"测试 timeout 参数允许的最大秒数是多少？只回答整数。","expected":"600"},
+  {"id":"replacement-count","symbol_id":"airp/core.py::Repository.update","retrieval_task":"inspect update replacement function count","question":"一次 replacement 必须包含几个函数定义？只回答整数。","expected":"1"},
+  {"id":"git-commit","symbol_id":"airp/core.py::Repository.commit","retrieval_task":"inspect commit git_commit result","question":"AIRP commit 是否创建 Git commit？只回答 true 或 false。","expected":"false"},
+  {"id":"mcp-auto","symbol_id":"airp/mcp_server.py::create_server","retrieval_task":"airp/mcp_server.py create_server airp_context response_mode default","question":"MCP airp_context 的 response_mode 默认值是什么？","expected":"auto"},
+  {"id":"cli-auto","symbol_id":"airp/cli.py::parser","retrieval_task":"inspect parser pack response mode default auto","question":"CLI pack 的 --response-mode 默认值是什么？","expected":"auto"}
+]

@@ -1,0 +1,80 @@
+[
+  {
+    "id": "itsdangerous-unsign-flow", "repo": "itsdangerous", "language": "Python",
+    "source_loc": 1176, "scale": "small", "type": "read", "category": "behavior",
+    "question": "In Signer.unsign, list the five ordered operations from input conversion through success or failure. Use exactly five short clauses separated by |.",
+    "expected": "want_bytes|require separator|rsplit from right once|verify and return on success|raise BadSignature on failure",
+    "rubric": ["(want_bytes|convert.*bytes)", "separator", "(rsplit|split)", "verif.*return", "raise"]
+  },
+  {
+    "id": "itsdangerous-unsafe-outcomes", "repo": "itsdangerous", "language": "Python",
+    "source_loc": 1176, "scale": "small", "type": "read", "category": "failure-path",
+    "question": "For Serializer._loads_unsafe_impl, give the four outcome cases in order, separated by |: valid signature; bad signature without payload; bad signature whose payload decodes; payload decode failure.",
+    "expected": "(True,decoded payload)|(False,None)|(False,decoded payload)|(False,None)",
+    "rubric": ["true.*(payload|value)", "false.*none", "false.*(payload|value)", "false.*none"]
+  },
+  {
+    "id": "itsdangerous-strict-nonascii-base64", "repo": "itsdangerous", "language": "Python",
+    "source_loc": 1176, "scale": "small", "type": "edit", "category": "edit",
+    "question": "Modify base64_decode so non-ASCII str input raises BadData('Invalid base64-encoded data') instead of leaking UnicodeEncodeError. Preserve valid str and bytes decoding. Make the smallest production-code change; do not edit tests."
+  },
+  {
+    "id": "p-limit-clear-reject", "repo": "p-limit", "language": "JavaScript",
+    "source_loc": 268, "scale": "tiny", "type": "read", "category": "behavior",
+    "question": "When rejectOnClear is true, what four things does pLimit.clearQueue do or imply? Answer in implementation order with four short clauses separated by |.",
+    "expected": "create AbortError|loop while queue nonempty|dequeue every pending item|reject each pending promise",
+    "rubric": ["abort", "(loop|while).*(queue|nonempty)", "dequeue", "reject"]
+  },
+  {
+    "id": "p-limit-concurrency-setter", "repo": "p-limit", "language": "JavaScript",
+    "source_loc": 268, "scale": "tiny", "type": "read", "category": "async-control",
+    "question": "List the four ordered actions of the pLimit concurrency setter, separated by |.",
+    "expected": "validate new concurrency|assign concurrency|queue a microtask|resume while capacity and queued work remain",
+    "rubric": ["valid", "(assign|set|update).*concurrency", "microtask", "(resume|process).*(capacity|active|queue)"]
+  },
+  {
+    "id": "p-limit-custom-clear-reason", "repo": "p-limit", "language": "JavaScript",
+    "source_loc": 268, "scale": "tiny", "type": "edit", "category": "edit",
+    "question": "Extend clearQueue to accept an optional reason. With rejectOnClear true, reject every pending promise with that exact reason; when omitted, retain the current AbortError default. Keep rejectOnClear false behavior unchanged. Modify production code only."
+  },
+  {
+    "id": "fd-uppercase-hir", "repo": "fd", "language": "Rust",
+    "source_loc": 5054, "scale": "medium", "type": "read", "category": "behavior",
+    "question": "Summarize pattern_has_uppercase_char in four ordered clauses separated by |: parser configuration, recursive HIR forms, uppercase checks, parse-error fallback.",
+    "expected": "parse with utf8(false)|recurse through capture repetition concat and alternation|check literals and Unicode or byte class endpoints|return false on parse error",
+    "rubric_scope": "all",
+    "rubric": ["utf.?8.*(false|disable)", "capture.*repetition.*concat.*alternation", "literal", "class.*(endpoint|range|start|end)", "false.*(pars|error)"]
+  },
+  {
+    "id": "fd-smart-case-callsite", "repo": "fd", "language": "Rust",
+    "source_loc": 5054, "scale": "medium", "type": "read", "category": "relationship",
+    "question": "In construct_config, state the exact boolean condition that makes case_sensitive true, in normalized prose using &&, ||, and any uppercase pattern.",
+    "expected": "!ignore_case && (case_sensitive || any pattern has uppercase)",
+    "rubric": ["!.*ignore_case.*&&.*case_sensitive.*\\|\\|.*(uppercase|upper)"]
+  },
+  {
+    "id": "fd-invalid-uppercase-conservative", "repo": "fd", "language": "Rust",
+    "source_loc": 5054, "scale": "medium", "type": "edit", "category": "edit",
+    "question": "Change pattern_has_uppercase_char so a regex parse error falls back to a direct Unicode uppercase scan of the original pattern. Thus '[A' is true and '[a' is false. Preserve behavior for valid regexes and modify production code only."
+  },
+  {
+    "id": "sds-growth-policy", "repo": "sds", "language": "C",
+    "source_loc": 1644, "scale": "small", "type": "read", "category": "allocation",
+    "question": "In sdsMakeRoomFor, give the four allocation-policy steps after insufficient space is detected, separated by |.",
+    "expected": "required length is len plus addlen|double below threshold otherwise add SDS_MAX_PREALLOC|select header and promote type 5 to type 8|reallocate or allocate-copy-free",
+    "rubric": ["len.*addlen", "(double|2).*(add|otherwise).*SDS_MAX_PREALLOC", "(header|type).*type.?5.*type.?8", "(realloc|allocate|malloc).*(copy|buffer|allocation)"]
+  },
+  {
+    "id": "sds-range-normalization", "repo": "sds", "language": "C",
+    "source_loc": 1644, "scale": "small", "type": "read", "category": "boundary",
+    "question": "For the C function sdsrange, summarize negative-index normalization and the two conditions that produce or clamp the new length. Use four clauses separated by |.",
+    "expected": "normalize negative start|normalize negative end|zero length for invalid start ranges|clamp oversized end",
+    "rubric_scope": "all",
+    "rubric": ["negative start.*len.*(0|floor|clamp)", "negative end.*len.*(0|floor|clamp)", "start.*(greater|exceed|>).*end.*(0|zero)", "start.*(beyond|at least|>=).*len.*(0|zero)", "end.*(beyond|at least|>=).*len.*(len.?1|len minus 1)"]
+  },
+  {
+    "id": "sds-binary-prefix", "repo": "sds", "language": "C",
+    "source_loc": 1644, "scale": "small", "type": "edit", "category": "edit",
+    "question": "Add public API int sdsstartswith(const sds s, const void *prefix, size_t prefixlen). It must be binary-safe, return nonzero exactly when s begins with all prefixlen bytes, accept an empty prefix, and return zero when the prefix is longer than s. Add declaration and implementation; do not edit built-in tests."
+  }
+]

@@ -1,0 +1,7 @@
+[
+  {"id":"shop-001","repository":"examples/shop","task":"折扣率应支持 0 到 1 的闭区间；补充边界测试。","acceptance":"discount(50,0)==50 且 discount(50,1)==0；原有测试全部通过。"},
+  {"id":"shop-002","repository":"examples/shop","task":"满 100 包邮改成满 150 包邮，更新测试。","acceptance":"shipping(149)==8 且 shipping(150)==0；checkout(120)==128；全部测试通过。"},
+  {"id":"shop-003","repository":"examples/shop","task":"为运费函数增加负数金额校验及测试。","acceptance":"shipping(-1) 抛 ValueError，其他边界不变；全部测试通过。"},
+  {"id":"shop-004","repository":"examples/shop","task":"拒绝 NaN 和无穷大金额或折扣率，并补充测试。","acceptance":"discount 对所有非有限参数抛 ValueError，正常金额行为不变。"},
+  {"id":"shop-005","repository":"examples/shop","task":"将普通运费改为 10 元，保持包邮阈值，更新调用链测试。","acceptance":"shipping(50)==10，shipping(100)==0，checkout(50,0.1)==55；全部测试通过。"}
+]

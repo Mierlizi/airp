@@ -1,0 +1,22 @@
+[
+  {
+    "id": "itsdangerous-strict-nonascii-base64",
+    "repo": "itsdangerous",
+    "language": "Python",
+    "source_loc": 1176,
+    "scale": "small",
+    "type": "edit",
+    "category": "edit",
+    "question": "Modify base64_decode so non-ASCII str input raises BadData('Invalid base64-encoded data') instead of leaking UnicodeEncodeError. Preserve valid str and bytes decoding. Make the smallest production-code change; do not edit tests."
+  },
+  {
+    "id": "sds-binary-prefix",
+    "repo": "sds",
+    "language": "C",
+    "source_loc": 1644,
+    "scale": "small",
+    "type": "edit",
+    "category": "edit",
+    "question": "Add public API int sdsstartswith(const sds s, const void *prefix, size_t prefixlen). It must be binary-safe, return nonzero exactly when s begins with all prefixlen bytes, accept an empty prefix, and return zero when the prefix is longer than s. Add declaration and implementation; do not edit built-in tests."
+  }
+]

@@ -1,0 +1,5 @@
+[
+  {"id":"behavior-003-postfix","category":"behavior_reasoning","question":"按examples/shop源码计算checkout(50, 0.1)的返回值，只返回数值。","expected":"53.0","acceptance":"numeric_sequence"},
+  {"id":"workflow-002-postfix","category":"workflow_semantics","question":"Repository.execute中的read_only集合包含多少个操作？只返回整数。","expected":"11"},
+  {"id":"exact-011-corrected","category":"exact_fact","question":"Repository.task_context的response_mode默认实际值是什么，Repository.smart_context调用它时传入的实际值是什么？严格按值1|值2返回，不要返回字段标签。","expected":"full|auto"}
+]

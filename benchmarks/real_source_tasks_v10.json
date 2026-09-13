@@ -1,0 +1,14 @@
+[
+  {"id":"real-001","question":"Repository.context方法签名中的默认budget是多少？只返回整数。","expected":"3000"},
+  {"id":"real-002","question":"_shape_task_response允许full-file-cost-bypass的两个intent是什么？按源码判断顺序用英文逗号连接。","expected":"minimal,understand"},
+  {"id":"real-003","question":"task_context的narrow、balanced、broad分别最多选择几个anchor？按narrow|balanced|broad返回三个整数。","expected":"1|2|3"},
+  {"id":"real-004","question":"save_receipt保留记录的时间窗口是多少秒，最大保留多少条？按秒数|条数返回。","expected":"86400|100","acceptance":"number_sequence"},
+  {"id":"real-005","question":"Repository.path明确拒绝哪三类路径？严格返回 absolute|internal|symlink。","expected":"absolute|internal|symlink"},
+  {"id":"real-006","question":"Extractor.visit_Call只为哪两种node.func AST类型记录call edge？按源码顺序返回类名，用|连接。","expected":"ast.Name|ast.Attribute","acceptance":"ast_type_sequence"},
+  {"id":"real-007","question":"graph.py中的GRAPH_SCHEMA当前整数值是多少？","expected":"4"},
+  {"id":"real-008","question":"Tree-sitter process调用设置的max_source_bytes和parse_timeout_ms分别是多少？按bytes|ms返回。","expected":"10000000|5000","acceptance":"number_sequence"},
+  {"id":"real-009","question":"Repository.commit成功返回的git_commit布尔值是什么？只返回小写true或false。","expected":"false"},
+  {"id":"real-010","question":"Repository.test的默认runner、timeout和output_mode是什么？按runner|timeout|output_mode返回。","expected":"unittest|60|compact"},
+  {"id":"real-011","question":"core.py的Repository.task_context默认response_mode与Repository.smart_context调用它时传入的response_mode是什么？按default|smart返回。","expected":"full|auto"},
+  {"id":"real-012","question":"graph.py的IGNORED集合一共包含多少个目录名？只返回整数。","expected":"12"}
+]

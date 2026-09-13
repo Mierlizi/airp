@@ -1,0 +1,12 @@
+[
+  {
+    "id": "itsdangerous-strict-nonascii-base64",
+    "repo": "itsdangerous",
+    "language": "Python",
+    "source_loc": 1176,
+    "scale": "small",
+    "type": "edit",
+    "category": "edit",
+    "question": "Modify base64_decode so non-ASCII str input raises BadData('Invalid base64-encoded data') instead of leaking UnicodeEncodeError. Preserve valid str and bytes decoding. Make the smallest production-code change; do not edit tests."
+  }
+]
