@@ -20,7 +20,11 @@ def check(plugin: Path) -> None:
     handlers = config['hooks']['UserPromptSubmit'][0]['hooks']
     assert len(handlers) == 1 and handlers[0]['type'] == 'command'
     assert '${PLUGIN_ROOT}' in handlers[0]['command']
-    assert ('D:' + '/program projects') not in handlers[0]['command']
+    source_plugin = (PROJECT / 'plugins' / 'airp').resolve()
+    if plugin.resolve() == source_plugin:
+        # Published source must remain portable. The installer intentionally
+        # records the user's actual interpreter path in the installed copy.
+        assert ('D:' + '/program projects') not in handlers[0]['command']
     assert (plugin / 'runtime/airp/hook.py').is_file()
     with tempfile.TemporaryDirectory(prefix='airp-plugin-') as folder:
         shutil.copytree(PROJECT / 'examples/shop', folder, dirs_exist_ok=True,
