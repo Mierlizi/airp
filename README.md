@@ -1,15 +1,16 @@
-# AIRP v0.6
+# AIRP v0.7.1
 
 面向 Coding Agent 的本地程序操作层。v0.6 在 SQLite FTS5 召回和自适应取证之上增加成本感知响应：普通 MCP 调用自动去除审计元数据，并在单个小文件更便宜时直接交付完整文件。它保留预算、锚点、receipt 和 Python 受控编辑安全性。核心不调用模型 API。
 
 ## Codex 插件
 
-项目已包含可安装插件 [plugins/airp](plugins/airp)。当前版本通过 `UserPromptSubmit` Hook 在第一次模型请求前完成本地索引和自适应检索，从根本上消除分析型 MCP 的“模型 → 工具 → 模型”额外往返。默认插件不加载 MCP；独立 CLI 和 MCP 适配器仍保留供显式兼容与事务流程使用。当前机器已安装 `airp@personal` 版本 `0.7.0+codex.20260914105108`，新建 Codex 任务后加载。
+项目已包含可安装插件 [plugins/airp](plugins/airp)。当前版本通过 `UserPromptSubmit` Hook 在第一次模型请求前完成本地索引和自适应检索，从根本上消除分析型 MCP 的“模型 → 工具 → 模型”额外往返。默认插件不加载 MCP；独立 CLI 和 MCP 适配器仍保留供显式兼容与事务流程使用。当前机器已安装 `airp@personal` 版本 `0.7.1+codex.20260914191952`，新建 Codex 任务后加载。
 
 插件开发验证：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/check_plugin.py
+.\.venv\Scripts\python.exe scripts/check_clean_install.py
 ```
 
 从 GitHub 检出后，可先预览再安装到个人 Codex Marketplace：
@@ -44,6 +45,8 @@ V34 将大型仓库快速路径扩展为有界“编辑前沿”：目标实现�
 
 V35 引入证据义务、边际信息价值剪枝、原子上下文装配、截断后充分性复核和 15% 预计收益准入线。相同大型仓库确定性任务中，Python、TypeScript、Rust 的上下文字符合计从 7,348 降至 6,056，减少 **17.58%**，三项均保持 `sufficient`；这是零模型调用的上下文结果，尚未替代 V34 的模型配对结论。详见 [可靠性约束路由报告](docs/V35_RELIABILITY_COST_ROUTING_20260914.md)。
 
+V0.7.1 将 `partial` 和预算截断结果改为仅注入短诊断，不再注入不完整源码；启用、跳过和失败会写入仓库 `.airp/hook-events.jsonl`。日志有 1 MiB 轮转上限，且不记录提示词、仓库路径、符号名或源码。`hook-report` 汇总启用率、原因、延迟和估算成本；估算单位不是平台计费 Token，需与宿主用量共同校准。 Python、TypeScript、Rust 三个大型仓库确定性复测均保持 `sufficient`，上下文共 6,023 字符，较 V35 的 6,056 再减少 0.54%；该复测不含模型调用，原始结果见 [V36 JSON](benchmarks/published/engineering-routing-local-v36.json)。
+
 ## 立即体验（Windows PowerShell）
 
 当前项目已准备 `.venv`。在本目录运行：
@@ -64,6 +67,7 @@ V35 引入证据义务、边际信息价值剪枝、原子上下文装配、截�
 .\.venv\Scripts\python.exe -m airp --repo examples/shop context 'pricing.py::discount' --budget 1500
 .\.venv\Scripts\python.exe -m airp --repo examples/shop pack 'change discount and shipping behavior' --budget 1500
 .\.venv\Scripts\python.exe -m airp --repo examples/shop test
+.\.venv\Scripts\python.exe -m airp --repo examples/shop hook-report
 ```
 
 其他机器安装（Python 3.11+）：
@@ -90,7 +94,7 @@ airp --repo /absolute/path/to/repository index
 | 事务 | begin / diff / commit / rollback；落盘前保留原始字节备份 |
 | 验证与测试 | parse + compile、unittest / pytest、超时、有限输出、测试结果绑定 Python 源码快照 |
 | AI 接口 | 默认插件使用 UserPromptSubmit 预模型 Hook；JSON CLI 和 stdio MCP 作为独立兼容接口保留 |
-| 观测 | 工具次数、耗时、响应字节及成功调用数；5 个 Benchmark 种子任务与配对结果汇总器 |
+| 观测 | 隐私保护的 Hook 启用/跳过/失败事件、原因、延迟与估算成本；工具次数、响应字节和 Benchmark 汇总 |
 
 ## 修改流程
 

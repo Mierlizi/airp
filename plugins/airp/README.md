@@ -13,14 +13,19 @@ V34 adds a bounded edit frontier for large repositories: the target implementati
 
 V35 adds evidence obligations, marginal information-value pruning, atomic context packing, post-pack sufficiency checks, and a 15% estimated-saving activation margin. On the same deterministic large-repository tasks, Python, TypeScript, and Rust context characters fell 17.58% in aggregate while all three remained sufficient. This is a zero-model-call context result and does not replace the V34 paired-model claim.
 
+V0.7.1 withholds all source bodies when evidence is partial or atomic packing cannot preserve sufficiency. The compact diagnostic names the reason and next action. Every enabled, skipped, or failed decision is written to a bounded local `.airp/hook-events.jsonl` journal containing no prompt, repository path, symbol name, or source text. Run `python -m airp --repo TARGET hook-report` to inspect activation, latency, and deterministic cost estimates. These estimates are not billed tokens and must be paired with host usage records in a field trial.
+
 Edit packs now include exact line locations, repository-specific validation hints, exception-boundary diagnostics, and warnings for local error suppression such as `errors="ignore"`, Rust `.ok()`, and empty catch blocks. A targeted Python behavior edit passed in both groups while AIRP reduced model tokens by 73.08% and tool calls from 14 to 4.
 
 The default plugin exposes no MCP server. AIRP's standalone CLI and MCP adapter remain in the project for explicit transaction workflows and compatibility, but they no longer impose tool schema or post-tool inference costs on every task.
 
 The hook reads source files in the active repository and places selected excerpts in model context. Codex therefore requires the user to review and trust the installed hook definition. The plugin bundles the pure-Python AIRP runtime. The repository installer records the Python 3.11+ interpreter used during installation in the user's installed copy, so later hook calls do not depend on a shell alias. Python repositories work without third-party runtime packages. Install the optional `tree-sitter-language-pack` dependency into that Python environment for JavaScript, TypeScript, TSX, Go, Rust, Java, C, C++, C#, Ruby, and PHP parsing.
 
+The installer validates Python 3.11+ and pins its absolute path into the installed Hook definition. The clean-environment check creates a new stdlib-only virtual environment and verifies Hook activation plus diagnostic reporting.
+
 Validate from the AIRP project root:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/check_plugin.py
+.\.venv\Scripts\python.exe scripts/check_clean_install.py
 ```

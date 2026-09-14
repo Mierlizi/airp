@@ -25,7 +25,7 @@ python -m pip install "tree-sitter-language-pack>=1.1,<2"
 - `修改 base64_decode，让非 ASCII 输入转换为 BadData，并运行聚焦验证。`
 - `分析这个方法的调用者、依赖和受影响测试。`
 
-`status: sufficient` 表示当前证据覆盖了任务中的显式代码标识符；`partial` 表示 Agent 应进行一次聚焦补查。`index_mode: exact-symbol fast start` 表示只解析了精确命中的文件，适合局部实现问题，不代表已获得全仓调用关系。
+`status: sufficient` 表示当前证据覆盖了任务中的显式代码标识符；`partial` 时插件不再发送源码正文，只返回原因、有限锚点提示和聚焦补查动作。`index_mode: exact-symbol fast start` 表示只解析了精确命中的文件，适合局部实现问题，不代表已获得全仓调用关系。
 
 ## 创新点及边界
 
@@ -68,10 +68,14 @@ V32 各语言的大型精确阅读结果：Python 70.57%、TypeScript 76.76%、R
 - [x] 插件不含本机绝对路径，自带 AIRP 运行时。
 - [x] `.gitignore` 排除克隆语料、原始运行轨迹、缓存、虚拟环境和 Word 草稿。
 - [x] 提供可审查的个人 Marketplace 安装脚本、Security、Contributing、Changelog 和实验报告。
-- [x] 66 项测试、Skill、插件清单和实际 Hook 验证通过。
+- [x] 78 项测试、Skill、插件清单和进程级 Hook 验证通过。
+- [x] stdlib-only 干净虚拟环境验证解释器固定、Hook 启动、证据返回与诊断汇总。
+- [x] 本地 Hook 事件覆盖启用、跳过和失败，且不记录提示词、路径、符号名或源码。
 - [x] 使用 Apache-2.0 许可证，并补充 `pyproject.toml` 的 license 字段。
 - [x] 使用 GitHub 项目地址 `Mierlizi/airp`。
-- [ ] 在干净的 Windows、macOS、Linux 环境验证 `python` 命令和插件安装。
+- [x] 在干净的 Windows 虚拟环境完成进程级安装验证。
+- [ ] 在独立 Windows 主机及 macOS、Linux 完成真实 Codex 宿主触发验证。
+- [ ] 招募 Python、JavaScript/TypeScript、Rust 小范围试点；C/C++ 暂不进入付费支持范围。
 - [ ] 决定是否发布 PyPI 包；当前 GitHub 插件安装不依赖 PyPI。
 
-建议将公开首版标记为 `v0.6.0-alpha.1`。README 首页只引用 V32、V26、V19 三组结论，并在同一位置显示样本量和任务边界。
+建议将公开首版标记为 `v0.7.1-alpha.1`。README 首页只引用 V32、V26、V19 三组结论，并在同一位置显示样本量和任务边界。

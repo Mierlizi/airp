@@ -12,7 +12,7 @@ def parser():
     p = argparse.ArgumentParser(description='AIRP local multi-language repository tools')
     p.add_argument('--repo', default='.', help='Repository root (default: current directory)')
     sub = p.add_subparsers(dest='tool', required=True)
-    for name in ('index', 'status', 'metrics', 'begin', 'diff', 'verify', 'commit', 'rollback', 'serve'):
+    for name in ('index', 'status', 'metrics', 'hook-report', 'begin', 'diff', 'verify', 'commit', 'rollback', 'serve'):
         sub.add_parser(name)
     warm = sub.add_parser('warm')
     warm.add_argument('languages', nargs='+')
@@ -57,6 +57,10 @@ def main():
     root, tool = args.pop('repo'), args.pop('tool')
     repo = None
     try:
+        if tool == 'hook-report':
+            from .diagnostics import hook_report
+            print(json.dumps(hook_report(root), ensure_ascii=False, indent=2))
+            return
         if tool == 'serve':
             from .mcp_server import serve
             serve(root)

@@ -10,7 +10,16 @@ import unittest
 from unittest.mock import patch
 
 from airp.core import AirpError, Repository, task_identifiers
-from airp.hook import _intent_for, _validation_hint, build_prompt_context, is_code_task, process_hook
+from airp.hook import (
+    _intent_for,
+    _validation_hint,
+    build_prompt_context,
+    build_prompt_decision,
+    is_code_task,
+    process_hook,
+)
+
+from scripts.install_local_plugin import configure_hook_interpreter, validate_interpreter
 
 PROJECT = Path(__file__).resolve().parents[1]
 
@@ -725,6 +734,14 @@ class RepositoryTests(unittest.TestCase):
 
         self.assertIsNone(context)
 
+        decision = build_prompt_decision(
+            root, 'What does tiny_target(...) return?')
+        self.assertEqual('skipped', decision['activation'])
+        self.assertEqual('low_expected_saving', decision['reason'])
+        self.assertEqual(0.0, decision['expected_saving'])
+        self.assertEqual(decision['expected_native_units'],
+                         decision['expected_airp_units'])
+
     def test_c_validation_hint_uses_target_and_bounded_dependency_stubs(self):
         result = {
             'anchors': [{'id': 'src/util.c::stringmatchlen',
@@ -874,7 +891,14 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn('edit_ready=no', context)
         self.assertIn('edit_frontier: declarations=0, dependencies=0, tests=0, callers=0',
                       context)
-
+        self.assertIn('activation: abstained', context)
+        self.assertIn('reason: blocked_partial', context)
+        self.assertNotIn('# task-anchor:', context)
+        self.assertNotIn('return 7', context)
+        decision = build_prompt_decision(root, 'Modify Target.execute to return 8.')
+        self.assertLess(decision['expected_saving'], 0)
+        self.assertGreater(decision['expected_airp_units'],
+                           decision['expected_native_units'])
     def test_hook_revalidates_sufficiency_after_atomic_budget_packing(self):
         root = self.root / 'large-edit-atomic-pack'
         root.mkdir()
@@ -903,7 +927,8 @@ class RepositoryTests(unittest.TestCase):
         self.assertNotIn('status: sufficient', context)
         self.assertIn('evidence_state: blocked-partial', context)
         self.assertRegex(context, r'omitted_blocks: [1-9][0-9]*')
-        self.assertIn('def normalize(value):', context)
+        self.assertIn('activation: abstained', context)
+        self.assertNotIn('def normalize(value):', context)
         self.assertNotIn('# edit-test:', context)
         self.assertNotIn('# edit-caller:', context)
     def test_behavior_context_includes_dependency_bodies_and_requires_them(self):
@@ -931,6 +956,68 @@ class RepositoryTests(unittest.TestCase):
             'cwd': str(self.root), 'prompt': 'hello there',
         }))
 
+        events = [json.loads(line) for line in
+                  (self.root / '.airp' / 'hook-events.jsonl').read_text(
+                      encoding='utf-8').splitlines()]
+        self.assertEqual(['enabled', 'skipped'],
+                         [event['activation'] for event in events[-2:]])
+        self.assertEqual('non_code_task', events[-1]['reason'])
+        for event in events[-2:]:
+            self.assertNotIn('prompt', event)
+            self.assertNotIn('root', event)
+            self.assertNotIn('anchors', event)
+
+
+    def test_hook_failure_is_nonblocking_and_locally_diagnosable(self):
+        with patch('airp.hook.Repository.smart_context',
+                   side_effect=RuntimeError('sensitive failure detail')):
+            output = process_hook({
+                'cwd': str(self.root),
+                'prompt': 'Explain the discount function.',
+            })
+
+        self.assertIsNone(output)
+        event = json.loads((self.root / '.airp' / 'hook-events.jsonl').read_text(
+            encoding='utf-8').splitlines()[-1])
+        self.assertEqual('failed', event['activation'])
+        self.assertEqual('internal_error', event['reason'])
+        self.assertEqual('RuntimeError', event['exception_type'])
+        self.assertNotIn('sensitive failure detail', json.dumps(event))
+
+    def test_hook_report_aggregates_field_trial_events_without_source_data(self):
+        process_hook({
+            'cwd': str(self.root),
+            'prompt': 'What does the discount function do?',
+        })
+        process_hook({'cwd': str(self.root), 'prompt': 'hello there'})
+
+        result = subprocess.run(
+            [sys.executable, '-m', 'airp', '--repo', str(self.root), 'hook-report'],
+            cwd=PROJECT, capture_output=True, text=True, encoding='utf-8')
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(2, report['events'])
+        self.assertEqual({'enabled': 1, 'skipped': 1}, report['by_activation'])
+        self.assertEqual(0.5, report['activation_rate'])
+        self.assertIn('latency_ms', report)
+        self.assertIn('estimated_units', report)
+        self.assertNotIn(str(self.root), result.stdout)
+
+    def test_installer_pins_and_validates_the_exact_python_interpreter(self):
+        plugin = self.root / 'plugin-copy'
+        shutil.copytree(PROJECT / 'plugins' / 'airp', plugin)
+
+        version = validate_interpreter(sys.executable)
+        configured = configure_hook_interpreter(plugin, sys.executable)
+        hooks = json.loads((plugin / 'hooks' / 'hooks.json').read_text(encoding='utf-8'))
+        command = hooks['hooks']['UserPromptSubmit'][0]['hooks'][0]['command']
+
+        self.assertGreaterEqual(version, (3, 11))
+        self.assertEqual(Path(sys.executable).resolve(), Path(configured).resolve())
+        self.assertIn(Path(sys.executable).resolve().as_posix(), command)
+        self.assertNotIn('command": "python ',
+                         (plugin / 'hooks' / 'hooks.json').read_text(encoding='utf-8'))
 
 if __name__ == '__main__':
     unittest.main()

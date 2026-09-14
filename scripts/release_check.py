@@ -11,7 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = [
     'README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'SECURITY.md', 'pyproject.toml',
     'plugins/airp/.codex-plugin/plugin.json', 'plugins/airp/hooks/hooks.json',
-    'plugins/airp/runtime/airp/hook.py', 'benchmarks/published/v1_verified_results.json',
+    'plugins/airp/runtime/airp/hook.py', 'plugins/airp/runtime/airp/diagnostics.py',
+    'scripts/check_clean_install.py', 'benchmarks/published/v1_verified_results.json',
+    'benchmarks/published/engineering-routing-local-v36.json',
 ]
 SCAN_ROOTS = ['airp', 'plugins', 'scripts', 'docs', 'README.md', 'pyproject.toml']
 BLOCKED = [re.compile('D:' + r'/program projects', re.I),

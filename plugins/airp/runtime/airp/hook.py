@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import sys
 import textwrap
+import time
 
 from .core import (
     Repository,
@@ -481,164 +482,281 @@ def _atomic_context_blocks(text: str) -> list[str]:
 
 
 
-def build_prompt_context(root: str | Path, prompt: str, max_chars: int = 7800) -> str | None:
-    """Build compact evidence before the first model call, without an MCP round trip."""
-    root = Path(root).resolve(strict=True)
-    if not root.is_dir() or not prompt.strip() or not is_code_task(prompt):
-        return None
-    if not next(iter(sources(root)), None):
-        return None
-    repo = Repository(root)
-    edit_locations = []
-    control_flow_hints = []
-    error_suppression_hints = []
-    try:
-        budget = _budget_for(prompt)
-        result = (_fast_exact_context(root, prompt, budget)
-                  if repo.load('manifest') is None else None)
-        if result is None:
-            result = repo.smart_context(task=prompt, budget=budget,
-                                        intent=_intent_for(prompt), breadth='auto')
-        source_count = result.get('source_file_count')
-        if source_count is None:
-            source_count = repo.db.execute(
-                'SELECT COUNT(*) FROM file_lookup').fetchone()[0]
-        routing_cost = _estimate_context_cost(root, result, prompt, source_count)
-        result['routing_cost'] = routing_cost
-        if result.get('sufficient') and not routing_cost['activate']:
-            return None
-        derived_facts = _derived_facts(repo, result, prompt)
-        if _intent_for(prompt) == 'edit':
-            for anchor in result.get('anchors', []):
-                try:
-                    symbol = repo.symbol(anchor['id'])
-                    edit_locations.append((symbol['path'], symbol['start'], symbol['end']))
-                except Exception:
-                    if all(key in anchor for key in ('path', 'start', 'end')):
-                        edit_locations.append((anchor['path'], anchor['start'], anchor['end']))
-            control_flow_hints = _control_flow_hints(repo, result, prompt)
-            error_suppression_hints = _error_suppression_hints(repo, result, prompt)
-    finally:
-        repo.close()
-    if not result.get('text') or not result.get('anchors'):
-        return None
-    anchor_ids = ', '.join(anchor['id'] for anchor in result['anchors'])
-    missing = result.get('coverage', {}).get('missing_identifiers', [])
-    status = 'sufficient' if result.get('sufficient') else 'partial'
-    header = (
-        '<airp-context>\n'
-        'AIRP local evidence. Reuse it before repository reads; inspect more only '
-        'when partial or runtime verification requires it.\n'
-        f'status: {status}\nanchors: {anchor_ids}\n'
-    )
-    if result.get('quick_index'):
-        header += ('index_mode: exact-symbol fast start; repository-wide relationships are not '
-                   'available until the persistent graph is built.\n')
+def _base_decision(started: float, **values) -> dict:
+    decision = {
+        'context': None,
+        'activation': 'skipped',
+        'reason': 'unknown',
+        'evidence_state': 'unavailable',
+        'intent': None,
+        'breadth': None,
+        'source_file_count': 0,
+        'context_chars': 0,
+        'evidence_chars': 0,
+        'omitted_blocks': 0,
+        'expected_airp_units': 0,
+        'expected_native_units': 0,
+        'expected_followup_units': 0,
+        'expected_saving': 0.0,
+        'minimum_saving': 0.15,
+    }
+    decision.update(values)
+    decision['elapsed_ms'] = round((time.perf_counter() - started) * 1000, 3)
+    return decision
+
+
+def _effective_route(route: dict, context_chars: int = 0,
+                     requires_native_followup: bool = False) -> dict:
+    """Convert candidate routing estimates into the cost of the chosen action."""
+    native = int(route.get('expected_native_units') or 0)
+    followup = native if requires_native_followup else 0
+    airp = context_chars + followup
+    return {
+        'expected_airp_units': airp,
+        'expected_native_units': native,
+        'expected_followup_units': followup,
+        'expected_saving': round(1.0 - airp / native, 4) if native else 0.0,
+        'minimum_saving': route.get('minimum_saving', 0.15),
+    }
+
+
+def _diagnostic_context(result: dict, reason: str, omitted_blocks: int,
+                        max_chars: int) -> str | None:
+    """Explain abstention without forwarding incomplete source evidence."""
     frontier = result.get('edit_frontier')
+    lines = [
+        '<airp-context>',
+        'status: partial',
+        'evidence_state: blocked-partial',
+        'activation: abstained',
+        f'reason: {reason}',
+        f'omitted_blocks: {omitted_blocks}',
+        'evidence_chars: 0',
+        'payload_hash: e3b0c44298fc1c14',
+    ]
+    if result.get('quick_index'):
+        lines.append('index_mode: exact-symbol fast start; source evidence withheld.')
+    anchor_hints = [anchor.get('id', '') for anchor in result.get('anchors', [])[:3]]
+    if any(anchor_hints):
+        lines.append('anchor_hints: ' + ', '.join(filter(None, anchor_hints)))
     if frontier is not None:
-        header += ('edit_frontier: declarations={declarations}, dependencies={dependencies}, '
-                   'tests={tests}, callers={callers}; '
-                   'pruned_low_value={pruned_low_value}; edit_ready={ready}.\n'.format(
-                       **frontier, ready='yes' if frontier['contract_evidence'] else 'no'))
-    if _intent_for(prompt) == 'edit':
-        edit_paths = list(dict.fromkeys(anchor['id'].split('::', 1)[0]
-                                       for anchor in result['anchors']))
-        if edit_paths:
-            validation_hint = _validation_hint(root, result)
-            header += (
-                'edit_scope: ' + ', '.join(edit_paths) + '\n'
-                'edit_sequence: patch the target; run one focused check; expand only '
-                'for missing evidence or failure; repair and rerun failed checks.\n'
-                'edit_format: write actual newline characters, never shell escape text.\n'
-            )
-            if validation_hint:
-                header += 'validation_hint: ' + validation_hint + '\n'
-            if edit_locations:
-                header += 'edit_locations: ' + '; '.join(
-                    f'{path}:{start}-{end}' for path, start, end in edit_locations) + '\n'
-            if control_flow_hints:
-                header += 'control_flow: ' + ' '.join(control_flow_hints) + '\n'
-            if error_suppression_hints:
-                header += 'error_suppression: ' + ' '.join(error_suppression_hints) + '\n'
+        lines.append(
+            'edit_frontier: declarations={declarations}, dependencies={dependencies}, '
+            'tests={tests}, callers={callers}; edit_ready={ready}.'.format(
+                **frontier, ready='yes' if frontier['contract_evidence'] else 'no'))
+    missing = result.get('coverage', {}).get('missing_identifiers', [])
     if missing:
-        header += 'missing_identifiers: ' + ', '.join(missing) + '\n'
-    if derived_facts:
-        header += 'derived_facts: ' + '; '.join(derived_facts) + '\n'
-    suffix = '\n</airp-context>'
-    blocks = _atomic_context_blocks(result['text'])
-    conservative_receipt = (
-        'evidence_state: blocked-partial\n'
-        'activation: abstained\n'
-        'reason: atomic_budget_exhausted\n'
-        f'omitted_blocks: {len(blocks)}\n'
-        'evidence_chars: 9999999\n'
-        'payload_hash: 0000000000000000\n'
-    )
+        lines.append(f'missing_identifier_count: {len(missing)}')
+    lines.append('next_action: use repository-native search and validation for missing evidence.')
+    lines.append('</airp-context>')
+    payload = '\n'.join(lines)
+    return payload if len(payload) <= max_chars else None
 
-    def pack(prefix: str) -> tuple[list[str], int]:
-        selected = []
-        used = len(prefix) + len(conservative_receipt) + len(suffix)
-        for block in blocks:
-            if used + len(block) > max_chars:
-                break
-            selected.append(block)
-            used += len(block)
-        return selected, len(blocks) - len(selected)
 
-    selected, omitted_blocks = pack(header)
-    if omitted_blocks:
-        header = header.replace('status: sufficient\n', 'status: partial\n')
-        evidence_state = 'blocked-partial'
-        activation = 'enabled' if selected else 'abstained'
-        reason = 'atomic_budget_exhausted'
-    else:
-        evidence_state = 'sufficient' if result.get('sufficient') else 'blocked-partial'
-        activation = 'enabled'
-        reason = 'evidence_complete' if result.get('sufficient') else 'evidence_incomplete'
+def build_prompt_decision(root: str | Path, prompt: str,
+                          max_chars: int = 7800) -> dict:
+    """Return an auditable Hook decision while keeping repository evidence local."""
+    started = time.perf_counter()
+    intent = _intent_for(prompt) if prompt.strip() else None
+    breadth = task_profile(prompt)['breadth'] if prompt.strip() else None
+    try:
+        root = Path(root).resolve(strict=True)
+        if not root.is_dir():
+            return _base_decision(started, activation='failed', reason='invalid_repository',
+                                  exception_type='NotADirectoryError', intent=intent,
+                                  breadth=breadth)
+        if not prompt.strip() or not is_code_task(prompt):
+            return _base_decision(started, reason='non_code_task', intent=intent,
+                                  breadth=breadth)
+        if not next(iter(sources(root)), None):
+            return _base_decision(started, reason='empty_repository', intent=intent,
+                                  breadth=breadth)
+        repo = Repository(root)
+        edit_locations = []
+        control_flow_hints = []
+        error_suppression_hints = []
+        try:
+            budget = _budget_for(prompt)
+            result = (_fast_exact_context(root, prompt, budget)
+                      if repo.load('manifest') is None else None)
+            if result is None:
+                result = repo.smart_context(task=prompt, budget=budget,
+                                            intent=intent, breadth='auto')
+            source_count = result.get('source_file_count')
+            if source_count is None:
+                source_count = repo.db.execute(
+                    'SELECT COUNT(*) FROM file_lookup').fetchone()[0]
+            routing_cost = _estimate_context_cost(root, result, prompt, source_count)
+            result['routing_cost'] = routing_cost
+            route = {
+                key: routing_cost[key] for key in (
+                    'expected_airp_units', 'expected_native_units',
+                    'expected_followup_units', 'expected_saving', 'minimum_saving')
+            }
+            if result.get('sufficient') and not routing_cost['activate']:
+                return _base_decision(
+                    started, reason='low_expected_saving', evidence_state='sufficient',
+                    intent=intent, breadth=breadth, source_file_count=source_count,
+                    **_effective_route(route, requires_native_followup=True))
+            derived_facts = _derived_facts(repo, result, prompt)
+            if intent == 'edit':
+                for anchor in result.get('anchors', []):
+                    try:
+                        symbol = repo.symbol(anchor['id'])
+                        edit_locations.append((symbol['path'], symbol['start'], symbol['end']))
+                    except Exception:
+                        if all(key in anchor for key in ('path', 'start', 'end')):
+                            edit_locations.append(
+                                (anchor['path'], anchor['start'], anchor['end']))
+                control_flow_hints = _control_flow_hints(repo, result, prompt)
+                error_suppression_hints = _error_suppression_hints(repo, result, prompt)
+        finally:
+            repo.close()
+        if not result.get('text') or not result.get('anchors'):
+            return _base_decision(
+                started, reason='no_evidence', intent=intent, breadth=breadth,
+                source_file_count=source_count,
+                **_effective_route(route, requires_native_followup=True))
 
-    evidence_text = ''.join(selected)
-    payload_hash = hashlib.sha256(evidence_text.encode('utf-8')).hexdigest()[:16]
-    receipt = (
-        f'evidence_state: {evidence_state}\n'
-        f'activation: {activation}\n'
-        f'reason: {reason}\n'
-        f'omitted_blocks: {omitted_blocks}\n'
-        f'evidence_chars: {len(evidence_text)}\n'
-        f'payload_hash: {payload_hash}\n'
-    )
-    if len(header) + len(receipt) + len(suffix) > max_chars:
-        status = 'sufficient' if evidence_state == 'sufficient' else 'partial'
+        blocks = _atomic_context_blocks(result['text'])
+        if not result.get('sufficient'):
+            context = _diagnostic_context(result, 'blocked_partial', len(blocks), max_chars)
+            return _base_decision(
+                started, context=context, reason='blocked_partial',
+                evidence_state='blocked-partial', intent=intent, breadth=breadth,
+                source_file_count=source_count, context_chars=len(context or ''),
+                omitted_blocks=len(blocks),
+                **_effective_route(route, len(context or ''), True))
+
+        anchor_ids = ', '.join(anchor['id'] for anchor in result['anchors'])
         header = (
             '<airp-context>\n'
-            f'status: {status}\n'
-            f'anchors: {anchor_ids}\n'
+            'AIRP local evidence. Reuse it before repository reads; inspect more only '
+            'when runtime verification requires it.\n'
+            f'status: sufficient\nanchors: {anchor_ids}\n'
         )
+        if result.get('quick_index'):
+            header += ('index_mode: exact-symbol fast start; repository-wide relationships are not '
+                       'available until the persistent graph is built.\n')
+        frontier = result.get('edit_frontier')
+        if frontier is not None:
+            header += ('edit_frontier: declarations={declarations}, dependencies={dependencies}, '
+                       'tests={tests}, callers={callers}; '
+                       'pruned_low_value={pruned_low_value}; edit_ready={ready}.\n'.format(
+                           **frontier, ready='yes' if frontier['contract_evidence'] else 'no'))
+        if intent == 'edit':
+            edit_paths = list(dict.fromkeys(anchor['id'].split('::', 1)[0]
+                                           for anchor in result['anchors']))
+            if edit_paths:
+                validation_hint = _validation_hint(root, result)
+                header += (
+                    'edit_scope: ' + ', '.join(edit_paths) + '\n'
+                    'edit_sequence: patch the target; run one focused check; expand only '
+                    'for missing evidence or failure; repair and rerun failed checks.\n'
+                    'edit_format: write actual newline characters, never shell escape text.\n'
+                )
+                if validation_hint:
+                    header += 'validation_hint: ' + validation_hint + '\n'
+                if edit_locations:
+                    header += 'edit_locations: ' + '; '.join(
+                        f'{path}:{start}-{end}' for path, start, end in edit_locations) + '\n'
+                if control_flow_hints:
+                    header += 'control_flow: ' + ' '.join(control_flow_hints) + '\n'
+                if error_suppression_hints:
+                    header += 'error_suppression: ' + ' '.join(error_suppression_hints) + '\n'
+        missing = result.get('coverage', {}).get('missing_identifiers', [])
+        if missing:
+            header += 'missing_identifiers: ' + ', '.join(missing) + '\n'
+        if derived_facts:
+            header += 'derived_facts: ' + '; '.join(derived_facts) + '\n'
+        suffix = '\n</airp-context>'
+        conservative_receipt = (
+            'evidence_state: blocked-partial\nactivation: abstained\n'
+            'reason: atomic_budget_exhausted\nomitted_blocks: 9999999\n'
+            'evidence_chars: 9999999\npayload_hash: 0000000000000000\n')
+
+        def pack(prefix: str) -> tuple[list[str], int]:
+            selected = []
+            used = len(prefix) + len(conservative_receipt) + len(suffix)
+            for block in blocks:
+                if used + len(block) > max_chars:
+                    break
+                selected.append(block)
+                used += len(block)
+            return selected, len(blocks) - len(selected)
+
         selected, omitted_blocks = pack(header)
         if omitted_blocks:
-            evidence_state = 'blocked-partial'
-            activation = 'enabled' if selected else 'abstained'
-            reason = 'atomic_budget_exhausted'
+            context = _diagnostic_context(
+                result, 'atomic_budget_exhausted', omitted_blocks, max_chars)
+            return _base_decision(
+                started, context=context, reason='atomic_budget_exhausted',
+                evidence_state='blocked-partial', intent=intent, breadth=breadth,
+                source_file_count=source_count, context_chars=len(context or ''),
+                omitted_blocks=omitted_blocks,
+                **_effective_route(route, len(context or ''), True))
+
         evidence_text = ''.join(selected)
         payload_hash = hashlib.sha256(evidence_text.encode('utf-8')).hexdigest()[:16]
         receipt = (
-            f'evidence_state: {evidence_state}\n'
-            f'activation: {activation}\n'
-            f'reason: {reason}\n'
-            f'omitted_blocks: {omitted_blocks}\n'
+            'evidence_state: sufficient\nactivation: enabled\n'
+            'reason: evidence_complete\n'
+            'omitted_blocks: 0\n'
             f'evidence_chars: {len(evidence_text)}\n'
-            f'payload_hash: {payload_hash}\n'
-        )
-    payload = header + receipt + ''.join(selected) + suffix
-    if len(payload) > max_chars:
-        return None
-    return payload
+            f'payload_hash: {payload_hash}\n')
+        if len(header) + len(receipt) + len(suffix) > max_chars:
+            header = '<airp-context>\nstatus: sufficient\nanchors: ' + anchor_ids + '\n'
+            selected, omitted_blocks = pack(header)
+            if omitted_blocks:
+                context = _diagnostic_context(
+                    result, 'atomic_budget_exhausted', omitted_blocks, max_chars)
+                return _base_decision(
+                    started, context=context, reason='atomic_budget_exhausted',
+                    evidence_state='blocked-partial', intent=intent, breadth=breadth,
+                    source_file_count=source_count, context_chars=len(context or ''),
+                    omitted_blocks=omitted_blocks,
+                    **_effective_route(route, len(context or ''), True))
+            evidence_text = ''.join(selected)
+            payload_hash = hashlib.sha256(evidence_text.encode('utf-8')).hexdigest()[:16]
+            receipt = (
+                'evidence_state: sufficient\nactivation: enabled\n'
+                'reason: evidence_complete\nomitted_blocks: 0\n'
+                f'evidence_chars: {len(evidence_text)}\n'
+                f'payload_hash: {payload_hash}\n')
+        payload = header + receipt + evidence_text + suffix
+        if len(payload) > max_chars:
+            return _base_decision(
+                started, reason='payload_limit', evidence_state='blocked-partial',
+                intent=intent, breadth=breadth, source_file_count=source_count,
+                omitted_blocks=len(blocks),
+                **_effective_route(route, requires_native_followup=True))
+        return _base_decision(
+            started, context=payload, activation='enabled', reason='evidence_complete',
+            evidence_state='sufficient', intent=intent, breadth=breadth,
+            source_file_count=source_count, context_chars=len(payload),
+            evidence_chars=len(evidence_text),
+            **_effective_route(route, len(payload), False))
+    except Exception as error:
+        return _base_decision(
+            started, activation='failed', reason='internal_error',
+            exception_type=type(error).__name__, intent=intent, breadth=breadth)
+
+
+def build_prompt_context(root: str | Path, prompt: str,
+                         max_chars: int = 7800) -> str | None:
+    """Backward-compatible context-only API."""
+    return build_prompt_decision(root, prompt, max_chars)['context']
 
 
 def process_hook(payload: dict) -> dict | None:
     """Convert a Codex hook payload into optional additional developer context."""
+    from .diagnostics import record_hook_event
+
     prompt = payload.get('prompt') or ''
     root = payload.get('cwd') or '.'
-    context = build_prompt_context(root, prompt)
+    decision = build_prompt_decision(root, prompt)
+    record_hook_event(root, decision)
+    context = decision.get('context')
     if not context:
         return None
     return {'hookSpecificOutput': {

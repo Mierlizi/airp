@@ -1,0 +1,36 @@
+{
+  "experiment": "deterministic large-repository edit-frontier retrieval",
+  "model_calls": 0,
+  "rows": [
+    {
+      "repository": "django",
+      "source_files": 2977,
+      "source_bytes": 20114252,
+      "latency_seconds": 2.232,
+      "context_chars": 2598,
+      "status": "sufficient",
+      "anchor": "django/utils/text.py::slugify",
+      "frontier": "declarations=0, dependencies=0, tests=2, callers=0; pruned_low_value=0; edit_ready=yes."
+    },
+    {
+      "repository": "nest",
+      "source_files": 1914,
+      "source_bytes": 4106030,
+      "latency_seconds": 0.942,
+      "context_chars": 1791,
+      "status": "sufficient",
+      "anchor": "packages/common/utils/shared.utils.ts::isNil",
+      "frontier": "declarations=0, dependencies=1, tests=1, callers=1; pruned_low_value=1; edit_ready=yes."
+    },
+    {
+      "repository": "ripgrep",
+      "source_files": 111,
+      "source_bytes": 1959317,
+      "latency_seconds": 0.135,
+      "context_chars": 1634,
+      "status": "sufficient",
+      "anchor": "crates/core/search.rs::<anonymous>.should_preprocess",
+      "frontier": "declarations=0, dependencies=1, tests=0, callers=0; pruned_low_value=1; edit_ready=yes."
+    }
+  ]
+}

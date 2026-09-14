@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1 - 2026-09-14
+
+- Withhold source bodies when evidence is partial or atomic packing exceeds the budget.
+- Emit structured decisions for enabled, skipped, and failed Hook attempts.
+- Record a bounded, privacy-preserving local Hook journal with no prompts, paths, symbols, or source.
+- Add `hook-report` for field-trial activation, reason, latency, and estimated-cost summaries.
+- Validate and pin the exact Python 3.11+ interpreter during plugin installation.
+- Add a reproducible stdlib-only clean-environment Hook and diagnostics smoke test.
+
 ## 0.7.0 - 2026-09-14
 
 - Add evidence obligations for targets, behavior dependencies, and direct tests.

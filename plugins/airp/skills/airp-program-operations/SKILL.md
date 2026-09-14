@@ -5,7 +5,7 @@ description: Use AIRP's automatically injected repository evidence for code anal
 
 # AIRP Program Operations
 
-AIRP runs locally during `UserPromptSubmit` and places an `<airp-context>` block in developer context before the first model request. Use that evidence first for every code task, including exact lookups. Do not repeat repository reads covered by the block. If `evidence_state` is `blocked-partial`, status is `partial`, an anchor is wrong, or runtime behavior must be checked, make one focused source query for the missing fact. Never treat a truncated block or `omitted_blocks>0` as edit-ready evidence.
+AIRP runs locally during `UserPromptSubmit` and places an `<airp-context>` block in developer context before the first model request. Use that evidence first for every code task, including exact lookups. Do not repeat repository reads covered by the block. If `evidence_state` is `blocked-partial` or status is `partial`, AIRP has withheld source bodies. Follow `next_action` and make one focused repository-native query using any `anchor_hints`. If an anchor is wrong or runtime behavior must be checked, inspect and validate that exact path. Never treat `omitted_blocks>0` as edit-ready evidence.
 
 For edits, use the injected evidence to choose the smallest change, then use normal editing and test tools. The receipt's `payload_hash` and `evidence_chars` identify the delivered evidence; they do not prove runtime behavior. The standalone AIRP CLI still supports controlled Python transactions when explicitly requested.
 
