@@ -41,6 +41,8 @@ newline = '\\r\\n' if b'\\r\\n' in raw else '\\n'
 text = raw.decode('utf-8').replace('\\r\\n', '\\n').replace('\\r', '\\n')
 lines = text.splitlines(keepends=True)
 replacement = sys.stdin.read().replace('\\r\\n', '\\n').replace('\\r', '\\n')
+if not replacement:
+    raise SystemExit('replacement input required')
 if replacement and not replacement.endswith('\\n'):
     replacement += '\\n'
 updated = ''.join(lines[:start - 1]) + replacement + ''.join(lines[end:])
@@ -54,6 +56,7 @@ path.write_bytes(updated.replace('\\n', newline).encode('utf-8'))
 begin { $replacementParts = [System.Collections.Generic.List[string]]::new() }
 process { $replacementParts.Add($ReplacementLine) }
 end {
+if ($replacementParts.Count -eq 0) { throw "replacement input required" }
 $resolved = (Resolve-Path -LiteralPath $Path).Path
 $raw = [System.IO.File]::ReadAllText($resolved)
 $newline = if ($raw.Contains("`r`n")) { "`r`n" } else { "`n" }
@@ -123,6 +126,79 @@ def run_command(command: list[str], cwd: Path, timeout: int = 180,
 
 def validate_edit(task: dict, repo: Path) -> tuple[bool, str]:
     task_id = task['id']
+    if task_id == 'django-slugify-lowercase-option':
+        source = (repo / 'django/utils/text.py').read_text(encoding='utf-8')
+        match = re.search(
+            r'((?:@keep_lazy_text\n)+def slugify\(.*?)(?=\n\ndef )', source, re.S)
+        if not match or match.group(1).count('@keep_lazy_text') != 1:
+            return False, 'slugify definition missing or keep_lazy_text duplicated'
+        namespace = {
+            'keep_lazy_text': lambda function: function,
+            're': re,
+            'unicodedata': __import__('unicodedata'),
+        }
+        try:
+            exec(match.group(1), namespace)
+            slugify = namespace['slugify']
+            assert slugify('Hello World') == 'hello-world'
+            assert slugify('Hello World', lowercase=False) == 'Hello-World'
+            assert slugify('Ärger Test', allow_unicode=True, lowercase=False) == 'Ärger-Test'
+        except Exception as error:
+            return False, repr(error)
+        return True, match.group(1)[-1500:]
+    if task_id == 'nest-isnil-strict-comparison':
+        source = (repo / 'packages/common/utils/shared.utils.ts').read_text(encoding='utf-8')
+        match = re.search(r'export const isNil\s*=.*?;\s*$', source, re.M | re.S)
+        if not match:
+            return False, 'isNil definition missing'
+        body = match.group(0).split('export const isEmpty', 1)[0]
+        success = ('val === undefined' in body and 'val === null' in body and
+                   'isUndefined(val)' not in body and
+                   'val is null | undefined' in body)
+        return success, body[-1000:]
+    if task_id == 'ripgrep-should-preprocess-is-none':
+        source = (repo / 'crates/core/search.rs').read_text(encoding='utf-8')
+        match = re.search(r'fn should_preprocess\(.*?\n    \}', source, re.S)
+        if not match:
+            return False, 'should_preprocess definition missing'
+        body = match.group(0)
+        success = ('.is_none()' in body and
+                   '!self.config.preprocessor.is_some()' not in body)
+        return success, body[-1200:]
+    if task_id == 'redis-stringmatchlen-negative-length':
+        source = (repo / 'src/util.c').read_text(encoding='utf-8')
+        match = re.search(
+            r'int stringmatchlen\(const char \*pattern, int patternLen,\s*'
+            r'const char \*string, int stringLen, int nocase\)\s*\{.*?\n\}',
+            source, re.S)
+        if not match:
+            return False, 'stringmatchlen definition missing'
+        function = match.group(0)
+        if not re.search(r'\nint stringmatch\(const char \*pattern, const char \*string, int nocase\)', source):
+            return False, 'adjacent stringmatch function was removed'
+        harness = repo / '.airp-hidden-test.c'
+        executable = repo / '.airp-hidden-test.exe'
+        harness.write_text(
+            '#include <assert.h>\n'
+            'static int calls = 0;\n'
+            'static int stringmatchlen_impl(const char *p,int plen,const char *s,int slen,'
+            'int nocase,int *skip,int nesting){(void)p;(void)plen;(void)s;(void)slen;'
+            '(void)nocase;(void)skip;(void)nesting;calls++;return 1;}\n' +
+            function +
+            '\nint main(void){assert(stringmatchlen("a",-1,"a",1,0)==0);'
+            'assert(stringmatchlen("a",1,"a",-1,0)==0);assert(calls==0);'
+            'assert(stringmatchlen("a",1,"a",1,0)==1);assert(calls==1);return 0;}\n',
+            encoding='utf-8')
+        try:
+            ok, output = run_command(
+                ['gcc', '-o', str(executable), str(harness), '-Wall', '-std=c99', '-O2'],
+                repo)
+            if not ok:
+                return ok, output
+            return run_command([str(executable)], repo)
+        finally:
+            harness.unlink(missing_ok=True)
+            executable.unlink(missing_ok=True)
     if task_id == 'itsdangerous-strict-nonascii-base64':
         code = ('from itsdangerous.encoding import base64_decode\n'
                 'from itsdangerous.exc import BadData\n'
@@ -326,7 +402,8 @@ def main() -> None:
 
     def run_pair(index: int, task: dict) -> list[dict]:
         pair = []
-        with tempfile.TemporaryDirectory(prefix='airp-multi-', dir=workspaces) as folder:
+        with tempfile.TemporaryDirectory(prefix='airp-multi-', dir=workspaces,
+                                             ignore_cleanup_errors=True) as folder:
             reused = reused_baselines.get(task['id'])
             if reused:
                 pair.append(reused)

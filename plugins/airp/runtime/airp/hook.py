@@ -43,11 +43,11 @@ def _budget_for(prompt: str) -> int:
 def _intent_for(prompt: str) -> str:
     folded = prompt.casefold()
     if any(word in folded for word in (
-            'impact', 'affected', 'caller', 'call chain', '影响', '受影响', '调用者', '调用链')):
-        return 'impact'
-    if any(word in folded for word in (
             'edit', 'change', 'modify', 'refactor', 'implement', '修改', '更改', '重构', '实现')):
         return 'edit'
+    if any(word in folded for word in (
+            'impact', 'affected', 'caller', 'call chain', '影响', '受影响', '调用者', '调用链')):
+        return 'impact'
     if any(word in folded for word in ('test', 'tests', '测试')):
         return 'test'
     return 'understand'
@@ -94,7 +94,12 @@ def _validation_hint(root: Path, result: dict) -> str | None:
     if any(path.endswith('.rs') for path in paths) and (root / 'Cargo.toml').exists():
         return 'Run a focused cargo test from the repository root; reuse locally cached dependencies.'
     if any(path.endswith(('.c', '.h', '.cc', '.cpp', '.hpp')) for path in paths):
-        return 'Compile a small focused harness against the edited source and run it.'
+        target = result.get('anchors', [{}])[0].get('name', 'the edited function')
+        dependencies = result.get('edit_frontier', {}).get('dependency_names', [])
+        stubs = f"; stub direct callees ({', '.join(dependencies)})" if dependencies else ''
+        return (f'Compile a temporary harness containing only {target}{stubs}, then run its '
+                'boundary cases. Do not search or build the full project unless that focused '
+                'check proves insufficient.')
     return None
 
 
@@ -176,29 +181,149 @@ def _error_suppression_hints(repo: Repository, result: dict, prompt: str) -> lis
     return hints
 
 
+def _frontier_excerpt(symbol: dict, target_name: str, limit: int = 1200) -> str:
+    """Return a bounded symbol excerpt centered on its target reference."""
+    source = symbol.get('source', '').rstrip()
+    if len(source.encode('utf-8')) <= limit:
+        return source
+    lines = source.splitlines()
+    hit = next((index for index, line in enumerate(lines)
+                if re.search(r'(?<![A-Za-z0-9_])' + re.escape(target_name) +
+                             r'(?![A-Za-z0-9_])', line, re.I)), 0)
+    start = max(0, hit - 8)
+    end = min(len(lines), hit + 13)
+    excerpt = '\n'.join(lines[start:end])
+    return (f'# excerpt lines {symbol["start"] + start}-{symbol["start"] + end - 1}\n'
+            f'{excerpt}')
+
+
+def _fast_edit_frontier(root: Path, paths: list[Path], target: dict,
+                        target_fragment: dict, matches: list[dict],
+                        budget: int) -> tuple[str, dict]:
+    """Collect a bounded editing workset without building the persistent graph."""
+    leaf = target['name']
+    token = re.compile(rb'(?<![A-Za-z0-9_])' + re.escape(leaf.encode().lower()) +
+                       rb'(?![A-Za-z0-9_])')
+    evidence: dict[str, list[dict]] = {
+        'declarations': [], 'dependencies': [], 'tests': [], 'callers': [],
+    }
+    folded_target = target.get('source', '').casefold()
+    dependencies = []
+    for symbol in target_fragment.get('symbols', []):
+        if symbol['id'] == target['id'] or target['id'].startswith(symbol['id'] + '.'):
+            continue
+        name = symbol.get('name', '')
+        if len(name) >= 3 and re.search(r'(?<![\w])' + re.escape(name) + r'(?![\w])',
+                                        folded_target, re.I):
+            dependencies.append(symbol)
+    dependencies.sort(key=lambda item: (len(item.get('source', '')), item['id']))
+    evidence['dependencies'] = dependencies[:2]
+    declarations = [item for item in matches if item['id'] != target['id'] and
+                    item.get('source', '').strip().endswith(';')]
+    declarations.sort(key=lambda item: (len(item.get('source', '')), item['id']))
+    evidence['declarations'] = declarations[:1]
+
+    target_path = root / target['path']
+    reference_paths = []
+    for path in paths:
+        if path == target_path:
+            continue
+        raw = path.read_bytes()
+        if token.search(raw.lower()):
+            relative = path.relative_to(root).as_posix().casefold()
+            is_test = any(part in relative for part in ('test', 'spec', '__tests__', 'testing'))
+            same_parent = path.parent == target_path.parent
+            reference_paths.append((not is_test, not same_parent,
+                                    len(Path(relative).parts), relative, path, raw))
+    reference_paths.sort(key=lambda row: row[:4])
+    test_paths = [row for row in reference_paths if not row[0]][:6]
+    local_paths = [row for row in reference_paths if row[0] and not row[1]][:4]
+    other_paths = [row for row in reference_paths if row[0] and row[1]][:4]
+    selected_paths = test_paths + local_paths + other_paths
+    seen_paths = set()
+    for not_test, _, _, _, path, raw in selected_paths:
+        relative = path.relative_to(root).as_posix()
+        if relative in seen_paths:
+            continue
+        lines = raw.decode('utf-8', errors='replace').replace('\r\n', '\n').splitlines()
+        hit = next((index for index, line in enumerate(lines)
+                    if re.search(r'(?<![A-Za-z0-9_])' + re.escape(leaf) +
+                                 r'(?![A-Za-z0-9_])', line, re.I)), None)
+        if hit is None:
+            continue
+        start = max(0, hit - 6)
+        end = min(len(lines), hit + 7)
+        symbol = {
+            'id': f'{relative}::reference@{hit + 1}', 'path': relative,
+            'name': leaf, 'start': start + 1, 'end': end,
+            'source': '\n'.join(lines[start:end]), 'is_test': not not_test,
+        }
+        role = 'tests' if not not_test else 'callers'
+        evidence[role].append(symbol)
+        seen_paths.add(relative)
+        if len(evidence['tests']) >= 2 and len(evidence['callers']) >= 1:
+            break
+    evidence['tests'] = evidence['tests'][:2]
+    evidence['callers'] = evidence['callers'][:1]
+
+    text = ''
+    used = len(target.get('source', '').encode('utf-8'))
+    included = {role: [] for role in evidence}
+    role_labels = {
+        'declarations': 'declaration', 'dependencies': 'dependency',
+        'tests': 'test', 'callers': 'caller',
+    }
+    for role in ('declarations', 'dependencies', 'tests', 'callers'):
+        for symbol in evidence[role]:
+            source = _frontier_excerpt(symbol, leaf)
+            block = f'\n# edit-{role_labels[role]}: {symbol["id"]}\n{source}\n'
+            size = len(block.encode('utf-8'))
+            if used + size > budget:
+                continue
+            text += block
+            used += size
+            included[role].append(symbol)
+    counts = {role: len(items) for role, items in included.items()}
+    counts['contract_evidence'] = sum(counts.values())
+    counts['dependency_names'] = [symbol['name'] for symbol in included['dependencies']]
+    return text, counts
+
+
 def _fast_exact_context(root: Path, prompt: str, budget: int) -> dict | None:
     """Build a first-use exact-symbol pack without constructing a repository-wide graph."""
     identifiers = task_identifiers(prompt)
     if not identifiers:
         return None
     paths = list(sources(root))
-    if len(paths) < 500:
+    if len(paths) < 500 and sum(path.stat().st_size for path in paths) < 1_000_000:
         return None
     wanted = [(value, value.rsplit('.', 1)[-1]) for value in identifiers]
     candidates = []
+    fragments = {}
     for path in paths:
         raw = path.read_bytes()
         folded = raw.lower()
-        if not any(re.search(rb'(?<![A-Za-z0-9_])' + re.escape(leaf.encode().lower()) +
-                             rb'(?![A-Za-z0-9_])', folded) for _, leaf in wanted):
+        defining = []
+        for value, leaf in wanted:
+            name = re.escape(leaf.encode().lower())
+            patterns = (
+                rb'\b(?:def|class|fn|function|interface|struct|enum|trait|type)\s+' + name +
+                rb'(?![A-Za-z0-9_])',
+                rb'\b(?:const|let|var)\s+' + name + rb'\s*[=:]',
+                rb'(?<![A-Za-z0-9_])' + name +
+                rb'\s*\([^;{}]{0,1000}\)\s*(?:\{|;|=>|:)',
+            )
+            if any(re.search(pattern, folded, re.S) for pattern in patterns):
+                defining.append((value, leaf))
+        if not defining:
             continue
-        # A qualified task must contain both the owner and member in the same file.
-        qualified = [value for value, leaf in wanted if '.' in value and
+        qualified = [value for value, leaf in defining if '.' in value and
                      value.rsplit('.', 1)[0].encode().lower() in folded and
                      leaf.encode().lower() in folded]
         if any('.' in value for value, _ in wanted) and not qualified:
             continue
         fragment = analyze(root, path, raw)
+        fragments[path.relative_to(root).as_posix()] = fragment
         candidates.extend(fragment['symbols'])
     matches = []
     for symbol in candidates:
@@ -207,17 +332,23 @@ def _fast_exact_context(root: Path, prompt: str, budget: int) -> dict | None:
                 continue
             if '.' in value:
                 qualified = symbol['qualname'].casefold()
-                target = value.casefold()
-                if qualified != target and not qualified.endswith('.' + target):
+                target_name = value.casefold()
+                if qualified != target_name and not qualified.endswith('.' + target_name):
                     continue
             matches.append(symbol)
             break
+
     def match_rank(item: dict) -> tuple:
-        path_parts = {part.casefold() for part in Path(item['path']).parts}
+        path = Path(item['path'])
+        path_parts = {part.casefold() for part in path.parts}
         vendor = bool(path_parts & {'deps', 'vendor', 'third_party', 'third-party'})
         declaration = (item['language'] in {'c', 'cpp'} and
                        item['source'].strip().endswith(';'))
-        return item['is_test'], vendor, declaration, len(Path(item['path']).parts), item['id']
+        prompt_folded = prompt.casefold().replace('\\', '/')
+        path_score = sum(1 for part in path_parts
+                         if len(part) >= 3 and part in prompt_folded)
+        return (item['is_test'], vendor, declaration, -path_score,
+                len(path.parts), item['id'])
 
     matches.sort(key=match_rank)
     if not matches:
@@ -236,14 +367,23 @@ def _fast_exact_context(root: Path, prompt: str, budget: int) -> dict | None:
     present = {identifier_key(symbol['id']) for symbol in included}
     missing = [value for value in identifiers
                if not any(identifier_key(value) in key for key in present)]
+    frontier = None
+    if _intent_for(prompt) == 'edit' and included:
+        target = included[0]
+        extra, frontier = _fast_edit_frontier(
+            root, paths, target, fragments[target['path']], matches, budget)
+        text += extra
+    sufficient = bool(included) and not missing
+    if frontier is not None:
+        sufficient = sufficient and frontier['contract_evidence'] > 0
     return {
         'text': text,
         'anchors': [symbol_summary(symbol) for symbol in included],
         'coverage': {'missing_identifiers': missing},
-        'sufficient': bool(included) and not missing,
+        'sufficient': sufficient,
         'quick_index': True,
+        'edit_frontier': frontier,
     }
-
 
 def build_prompt_context(root: str | Path, prompt: str, max_chars: int = 7800) -> str | None:
     """Build compact evidence before the first model call, without an MCP round trip."""
@@ -291,6 +431,12 @@ def build_prompt_context(root: str | Path, prompt: str, max_chars: int = 7800) -
     if result.get('quick_index'):
         header += ('index_mode: exact-symbol fast start; repository-wide relationships are not '
                    'available until the persistent graph is built.\n')
+    frontier = result.get('edit_frontier')
+    if frontier is not None:
+        header += ('edit_frontier: declarations={declarations}, dependencies={dependencies}, '
+                   'tests={tests}, callers={callers}; '
+                   'edit_ready={ready}.\n'.format(
+                       **frontier, ready='yes' if frontier['contract_evidence'] else 'no'))
     if _intent_for(prompt) == 'edit':
         edit_paths = list(dict.fromkeys(anchor['id'].split('::', 1)[0]
                                        for anchor in result['anchors']))

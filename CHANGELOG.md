@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 - 2026-09-14
+
+- Added bounded edit frontiers for large unindexed repositories: declarations, direct dependencies, tests, callers, edit readiness, and focused validation.
+- Added lowercase explicit-call extraction, edit-over-impact intent precedence, path-aware duplicate ranking, and source-byte fast-start routing.
+- Added dependency-aware isolated C/C++ validation guidance.
+- Hardened model edit benchmarks against empty replacements and adjacent-symbol deletion.
+- Added a four-repository, four-language large-edit benchmark with 4/4 success in both groups and 38.31% aggregate model-token reduction.
 ## 0.6.0 - 2026-09-13
 
 - Added pre-model `UserPromptSubmit` evidence injection without a default MCP round trip.

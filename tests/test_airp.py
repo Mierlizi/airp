@@ -8,8 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from airp.core import AirpError, Repository
-from airp.hook import _intent_for, build_prompt_context, is_code_task, process_hook
+from airp.core import AirpError, Repository, task_identifiers
+from airp.hook import _intent_for, _validation_hint, build_prompt_context, is_code_task, process_hook
 
 PROJECT = Path(__file__).resolve().parents[1]
 
@@ -640,9 +640,11 @@ class RepositoryTests(unittest.TestCase):
         self.assertTrue(is_code_task('Repository.context 的默认 budget 是多少？'))
         self.assertTrue(is_code_task('请检查 pricing.py 中的折扣函数'))
         self.assertTrue(is_code_task('refactor the checkout function'))
+        self.assertEqual(['slugify'], task_identifiers('modify slugify(...) behavior'))
         self.assertFalse(is_code_task('你好，请介绍一下自己'))
         self.assertEqual('impact', _intent_for('find callers and affected tests'))
         self.assertEqual('edit', _intent_for('refactor this function'))
+        self.assertEqual('edit', _intent_for('modify this function and check callers'))
         self.assertEqual('test', _intent_for('which tests cover this method'))
         self.assertEqual('understand', _intent_for('explain this function'))
 
@@ -655,6 +657,16 @@ class RepositoryTests(unittest.TestCase):
         self.assertNotIn('receipt_id', context)
         self.assertNotIn('routing', context)
 
+    def test_c_validation_hint_uses_target_and_bounded_dependency_stubs(self):
+        result = {
+            'anchors': [{'id': 'src/util.c::stringmatchlen',
+                         'name': 'stringmatchlen'}],
+            'edit_frontier': {'dependency_names': ['stringmatchlen_impl']},
+        }
+        hint = _validation_hint(self.root, result)
+        self.assertIn('only stringmatchlen', hint)
+        self.assertIn('stub direct callees (stringmatchlen_impl)', hint)
+        self.assertIn('Do not search or build the full project', hint)
     def test_edit_hook_infers_src_layout_validation_environment(self):
         root = self.root / 'layout'
         (root / 'src').mkdir(parents=True)
@@ -711,6 +723,67 @@ class RepositoryTests(unittest.TestCase):
         self.assertFalse((root / '.airp' / 'program.sqlite3-wal').stat().st_size
                          if (root / '.airp' / 'program.sqlite3-wal').exists() else 0)
 
+    def test_large_by_bytes_repository_uses_fast_start(self):
+        root = self.root / 'large-bytes-fast-start'
+        root.mkdir()
+        (root / 'target.py').write_text(
+            'def process_value(value):\n'
+            '    return value + 1\n', encoding='utf-8')
+        payload = '# filler\n' * 2500
+        for index in range(50):
+            (root / f'filler_{index}.py').write_text(payload, encoding='utf-8')
+
+        context = build_prompt_context(
+            root, 'Modify process_value(...) to preserve its contract.')
+        self.assertIn('index_mode: exact-symbol fast start', context)
+        self.assertIn('target.py::process_value', context)
+    def test_large_edit_fast_start_builds_bounded_edit_frontier(self):
+        root = self.root / 'large-edit-frontier'
+        root.mkdir()
+        (root / 'target.py').write_text(
+            'def normalize(value):\n'
+            '    return value.strip()\n\n'
+            'class Target:\n'
+            '    def execute(self, value):\n'
+            '        return normalize(value)\n', encoding='utf-8')
+        (root / 'caller.py').write_text(
+            'from target import Target\n\n'
+            'def run(value):\n'
+            '    return Target().execute(value)\n', encoding='utf-8')
+        (root / 'test_target.py').write_text(
+            'from target import Target\n\n'
+            'def test_execute_strips_input():\n'
+            '    assert Target().execute(" value ") == "value"\n', encoding='utf-8')
+        for index in range(497):
+            (root / f'filler_{index}.py').write_text(
+                f'VALUE_{index} = {index}\n', encoding='utf-8')
+
+        context = build_prompt_context(
+            root, 'Modify Target.execute to preserve normalized output.')
+        self.assertIn('status: sufficient', context)
+        self.assertIn('edit_ready=yes', context)
+        self.assertIn('# task-anchor: target.py::Target.execute', context)
+        self.assertIn('# edit-dependency: target.py::normalize', context)
+        self.assertIn('# edit-test: test_target.py::reference@', context)
+        self.assertIn('# edit-caller: caller.py::reference@', context)
+        self.assertLess(len(context), 7801)
+
+    def test_large_edit_fast_start_requires_contract_evidence(self):
+        root = self.root / 'large-edit-without-contract'
+        root.mkdir()
+        (root / 'target.py').write_text(
+            'class Target:\n'
+            '    def execute(self):\n'
+            '        return 7\n', encoding='utf-8')
+        for index in range(499):
+            (root / f'filler_{index}.py').write_text(
+                f'VALUE_{index} = {index}\n', encoding='utf-8')
+
+        context = build_prompt_context(root, 'Modify Target.execute to return 8.')
+        self.assertIn('status: partial', context)
+        self.assertIn('edit_ready=no', context)
+        self.assertIn('edit_frontier: declarations=0, dependencies=0, tests=0, callers=0',
+                      context)
     def test_behavior_context_includes_dependency_bodies_and_requires_them(self):
         context = build_prompt_context(self.root, '计算 checkout(50, 0.1) 的返回值')
         self.assertIn('def checkout', context)

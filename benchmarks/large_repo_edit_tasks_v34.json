@@ -1,0 +1,42 @@
+[
+  {
+    "id": "django-slugify-lowercase-option",
+    "repo": "django",
+    "language": "Python",
+    "source_loc": 532132,
+    "scale": "large",
+    "type": "edit",
+    "category": "api-extension",
+    "question": "Modify slugify(...) in the django utils text module to add a keyword-only lowercase=True option. Preserve current behavior by default; when lowercase is false, retain letter case. Update the docstring."
+  },
+  {
+    "id": "nest-isnil-strict-comparison",
+    "repo": "nest",
+    "language": "TypeScript",
+    "source_loc": 133789,
+    "scale": "large",
+    "type": "edit",
+    "category": "refactor",
+    "question": "Modify isNil in the common shared utils module to use direct strict comparisons for both nullish values without calling another helper. Preserve its type predicate and behavior."
+  },
+  {
+    "id": "ripgrep-should-preprocess-is-none",
+    "repo": "ripgrep",
+    "language": "Rust",
+    "source_loc": 56409,
+    "scale": "large",
+    "type": "edit",
+    "category": "refactor",
+    "question": "Refactor should_preprocess(...) in ripgrep core search so its early return uses the direct absence predicate instead of a negated presence check. Preserve behavior."
+  },
+  {
+    "id": "redis-stringmatchlen-negative-length",
+    "repo": "redis",
+    "language": "C",
+    "source_loc": 383301,
+    "scale": "large",
+    "type": "edit",
+    "category": "input-validation",
+    "question": "Modify stringmatchlen(...) in redis util to return 0 before calling its implementation when either length argument is negative. Preserve its public declaration and normal behavior."
+  }
+]

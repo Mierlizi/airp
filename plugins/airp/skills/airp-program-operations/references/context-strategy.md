@@ -4,7 +4,7 @@ AIRP should minimize the expected cost of a successful task, rather than minimiz
 
 ## Evidence ladder
 
-If the injected block says `index_mode: exact-symbol fast start`, AIRP parsed only files that contain the exact named symbol. Use it for local implementation behavior. Build the persistent graph or make a focused follow-up query before answering exhaustive callers, impact, inheritance, or dynamic wiring questions.
+If the injected block says `index_mode: exact-symbol fast start`, AIRP parsed only definition candidates plus a bounded edit frontier. Use it for local implementation behavior. For edits, `edit_ready=yes` means at least one declaration, direct dependency, test, or caller was included; `edit_ready=no` requires one focused contract lookup. Build the persistent graph or make a focused follow-up query before answering exhaustive callers, impact, inheritance, or dynamic wiring questions.
 
 1. Index and request a narrow task context. Treat ranked anchors and static graph edges as hypotheses.
    If the injected block says `status: partial`, assume a focused repository read is still required. Do not expand the AIRP payload and then repeat broad discovery: inspect the missing identifier, declaration, or validation path directly. In the V19 multi-repository experiment, all three partial tasks increased model tokens while all nine sufficient tasks reduced them.

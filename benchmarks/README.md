@@ -3,6 +3,7 @@
 `run_hook_payload_audit.py` 对 24 个真实源码问题执行本地确定性预模型负载审计，不调用模型。`run_premodel_hook_ab.py` 执行普通源码读取与预模型注入的配对 Agent 实验，并按任务类别统计总模型 Token、正确率、命令调用和端到端延迟。完整 24 题结果保存在 `runs/premodel-hook-v17.json`；修复后针对性复测保存在 `runs/premodel-hook-postfix-v18.json`。
 
 `run_multi_repo_edit_ab.py` 是当前最接近真实使用的扩展实验：4 个固定公开仓库、Python/JavaScript/Rust/C、268–5,054 行生产源码、8 个理解/关系任务和 4 个带可执行隐藏验收的编辑任务。24 次成对调用均已完成，两组均 12/12 成功，总模型 Token 减少 18.54%。任务、原始结果和分析分别见 `multi_repo_tasks_v19.json`、`runs/multi-repo-edit-v19.json` 和 `docs/V19_MULTI_REPO_EDIT_RESULTS_20260913.md`。样本尚不足以替代 50–100 个任务、多仓库重复运行的总体估计。
+V34 使用同一 runner 扩展到 Django、NestJS、ripgrep、Redis 的真实大型仓库编辑。四组 baseline/AIRP 均通过隐藏验证，总模型 Token 减少 38.31%。任务定义为 `large_repo_edit_tasks_v34.json`；可发布原始结果为 `published/large-repo-edit-v34.json`；本地无模型检索测量由 `measure_edit_frontier.py` 生成 `published/large-edit-frontier-local-v34.json`。C 样本 Token 增加 1.57%，改进后的隔离 harness 提示还没有模型复测。完整方法与限制见 `docs/V34_LARGE_REPOSITORY_EDIT_FRONTIER_20260914.md`。
 
 另有两版已运行的只读 Context Compiler 消融实验：3 个任务、每条件重复 2 次。v0.2 优化结果见 `docs/BENCHMARK_CONTEXT_AB_V02_20260912.md`，v0.1 结果见 `docs/BENCHMARK_CONTEXT_AB_20260912.md`。它们验证完整文件与 AIRP 符号上下文的差异，不能替代完整 Agent 插件 Benchmark。
 

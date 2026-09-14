@@ -57,12 +57,13 @@ def task_identifiers(text):
     common = {'what', 'which', 'where', 'when', 'return', 'default', 'current',
               'source', 'code', 'with', 'from', 'into', 'true', 'false'}
     call_like = re.findall(r'(?<![\w.])([_A-Za-z][_A-Za-z0-9]*)\s*\(', text)
+    explicit_calls = {value.casefold() for value in call_like}
     result = []
     for value in [*candidates, *call_like]:
         leaf = value.rsplit('.', 1)[-1]
         code_like = ('_' in value or '.' in value or leaf.isupper() or
                      any(char.isupper() for char in leaf[1:]))
-        if code_like and value.casefold() not in common:
+        if (code_like or value.casefold() in explicit_calls) and value.casefold() not in common:
             result.append(value)
     return list(dict.fromkeys(result))
 
