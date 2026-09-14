@@ -1,6 +1,6 @@
 {
   "name": "airp",
-  "version": "0.6.1+codex.20260914091946",
+  "version": "0.7.0+codex.20260914105108",
   "description": "Pre-model, compact multi-language source context for Codex.",
   "author": {
     "name": "Mierlizi"

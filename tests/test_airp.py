@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -113,6 +114,25 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(['pricing.py::discount'], [anchor['id'] for anchor in result['anchors']])
         self.assertIn('def discount', result['text'])
         self.assertLessEqual(result['text'].count('# test:'), 2)
+
+    def test_edit_context_requires_available_direct_test_evidence(self):
+        result = self.call(
+            'task_context',
+            task='Modify discount so invalid totals raise TypeError.',
+            intent='edit',
+            breadth='narrow',
+            budget=350,
+        )
+
+        self.assertIn('pricing.py::discount', result['included'])
+        self.assertNotIn('tests/test_checkout.py::TestPricing.test_discount',
+                         result['included'])
+        self.assertFalse(result['sufficient'])
+        self.assertEqual('blocked-partial', result['evidence_state'])
+        self.assertTrue(any(
+            item.startswith('direct-test:tests/test_checkout.py::')
+            for item in result['evidence']['missing']
+        ))
 
     def test_large_task_anchor_uses_focused_exact_excerpt(self):
         path = self.root / 'large.py'
@@ -284,6 +304,33 @@ class RepositoryTests(unittest.TestCase):
                 repo.close()
         self.assertEqual('full-file-cost-bypass', result['delivery'])
         self.assertEqual(source.splitlines(), result['text'].splitlines())
+
+    def test_cost_router_stops_before_redundant_callers_fill_budget(self):
+        (self.root / 'target_api.py').write_text(
+            'def normalize_api(value):\n'
+            '    return value.strip()\n', encoding='utf-8')
+        for index in range(4):
+            (self.root / f'caller_{index}.py').write_text(
+                'from target_api import normalize_api\n\n'
+                f'def caller_{index}(value):\n'
+                '    return normalize_api(value)\n', encoding='utf-8')
+        self.call('index')
+
+        result = self.call(
+            'task_context',
+            task='Modify normalize_api implementation without changing its public API.',
+            intent='edit',
+            breadth='narrow',
+            budget=5000,
+        )
+
+        caller_ids = [
+            sid for sid, detail in result['selection'].items()
+            if detail['role'] == 'caller'
+        ]
+        self.assertLessEqual(len(caller_ids), 1)
+        self.assertGreaterEqual(result['routing_cost']['pruned_low_value'], 1)
+        self.assertTrue(result['sufficient'])
 
     def test_task_context_balances_multiple_task_anchors(self):
         result = self.call('task_context', task='compare discount and shipping behavior',
@@ -656,6 +703,27 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn('def discount', context)
         self.assertNotIn('receipt_id', context)
         self.assertNotIn('routing', context)
+        self.assertRegex(context, r'payload_hash: [0-9a-f]{16}')
+        self.assertRegex(context, r'evidence_chars: [1-9][0-9]*')
+        repeated = build_prompt_context(
+            self.root,
+            'pricing.py \u4e2d discount \u51fd\u6570\u8fd4\u56de\u4ec0\u4e48\uff1f',
+        )
+        first_hash = re.search(r'payload_hash: ([0-9a-f]{16})', context).group(1)
+        second_hash = re.search(r'payload_hash: ([0-9a-f]{16})', repeated).group(1)
+        self.assertEqual(first_hash, second_hash)
+
+    def test_hook_abstains_when_context_cost_exceeds_direct_read(self):
+        root = self.root / 'tiny-low-benefit'
+        root.mkdir()
+        (root / 'tiny.py').write_text(
+            'def tiny_target():\n'
+            '    return 7\n', encoding='utf-8')
+
+        context = build_prompt_context(
+            root, 'What does tiny_target(...) return?')
+
+        self.assertIsNone(context)
 
     def test_c_validation_hint_uses_target_and_bounded_dependency_stubs(self):
         result = {
@@ -768,6 +836,28 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn('# edit-caller: caller.py::reference@', context)
         self.assertLess(len(context), 7801)
 
+    def test_large_edit_frontier_prunes_redundant_test_blocks(self):
+        root = self.root / 'large-edit-redundant-tests'
+        root.mkdir()
+        (root / 'target.py').write_text(
+            'def normalize(value):\n'
+            '    return value.strip()\n', encoding='utf-8')
+        for index in range(2):
+            (root / f'test_target_{index}.py').write_text(
+                'from target import normalize\n\n'
+                f'def test_normalize_{index}():\n'
+                '    assert normalize(" value ") == "value"\n', encoding='utf-8')
+        for index in range(497):
+            (root / f'filler_{index}.py').write_text(
+                f'VALUE_{index} = {index}\n', encoding='utf-8')
+
+        context = build_prompt_context(
+            root, 'Modify normalize(...) to preserve stripped output.')
+
+        self.assertEqual(1, context.count('# edit-test:'), context)
+        self.assertIn('tests=1', context)
+        self.assertIn('pruned_low_value=1', context)
+
     def test_large_edit_fast_start_requires_contract_evidence(self):
         root = self.root / 'large-edit-without-contract'
         root.mkdir()
@@ -784,6 +874,38 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn('edit_ready=no', context)
         self.assertIn('edit_frontier: declarations=0, dependencies=0, tests=0, callers=0',
                       context)
+
+    def test_hook_revalidates_sufficiency_after_atomic_budget_packing(self):
+        root = self.root / 'large-edit-atomic-pack'
+        root.mkdir()
+        (root / 'target.py').write_text(
+            'def normalize(value):\n'
+            '    return value.strip()\n\n'
+            'class Target:\n'
+            '    def execute(self, value):\n'
+            '        return normalize(value)\n', encoding='utf-8')
+        (root / 'caller.py').write_text(
+            'from target import Target\n\n'
+            'def run(value):\n'
+            '    return Target().execute(value)\n', encoding='utf-8')
+        (root / 'test_target.py').write_text(
+            'from target import Target\n\n'
+            'def test_execute_strips_input():\n'
+            '    assert Target().execute(" value ") == "value"\n', encoding='utf-8')
+        for index in range(497):
+            (root / f'filler_{index}.py').write_text(
+                f'VALUE_{index} = {index}\n', encoding='utf-8')
+
+        context = build_prompt_context(
+            root, 'Modify Target.execute to preserve normalized output.', max_chars=550)
+
+        self.assertLessEqual(len(context), 550)
+        self.assertNotIn('status: sufficient', context)
+        self.assertIn('evidence_state: blocked-partial', context)
+        self.assertRegex(context, r'omitted_blocks: [1-9][0-9]*')
+        self.assertIn('def normalize(value):', context)
+        self.assertNotIn('# edit-test:', context)
+        self.assertNotIn('# edit-caller:', context)
     def test_behavior_context_includes_dependency_bodies_and_requires_them(self):
         context = build_prompt_context(self.root, '计算 checkout(50, 0.1) 的返回值')
         self.assertIn('def checkout', context)

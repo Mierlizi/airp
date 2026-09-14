@@ -2,13 +2,21 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 from pathlib import Path
 import re
 import sys
 import textwrap
 
-from .core import Repository, identifier_key, symbol_summary, task_identifiers, task_profile
+from .core import (
+    Repository,
+    identifier_key,
+    search_terms,
+    symbol_summary,
+    task_identifiers,
+    task_profile,
+)
 from .graph import analyze, sources
 
 
@@ -269,6 +277,21 @@ def _fast_edit_frontier(root: Path, paths: list[Path], target: dict,
     text = ''
     used = len(target.get('source', '').encode('utf-8'))
     included = {role: [] for role in evidence}
+    selected_terms: list[set[str]] = []
+    pruned_low_value = 0
+    marginal_value_floor = 2.0
+    role_score = {
+        'declarations': 900,
+        'dependencies': 800,
+        'tests': 820,
+        'callers': 620,
+    }
+    role_cost = {
+        'declarations': 60,
+        'dependencies': 100,
+        'tests': 40,
+        'callers': 160,
+    }
     role_labels = {
         'declarations': 'declaration', 'dependencies': 'dependency',
         'tests': 'test', 'callers': 'caller',
@@ -278,14 +301,31 @@ def _fast_edit_frontier(root: Path, paths: list[Path], target: dict,
             source = _frontier_excerpt(symbol, leaf)
             block = f'\n# edit-{role_labels[role]}: {symbol["id"]}\n{source}\n'
             size = len(block.encode('utf-8'))
+            terms = set(search_terms(source))
+            overlap = max(
+                (len(terms & prior) / max(1, len(terms | prior))
+                 for prior in selected_terms),
+                default=0,
+            )
+            novelty = max(0.15, 1.0 - overlap)
+            marginal_value = (
+                (role_score[role] - 260 * overlap) * novelty
+                / max(1, size + role_cost[role])
+            )
+            required = not included[role]
+            if not required and marginal_value < marginal_value_floor:
+                pruned_low_value += 1
+                continue
             if used + size > budget:
                 continue
             text += block
             used += size
             included[role].append(symbol)
+            selected_terms.append(terms)
     counts = {role: len(items) for role, items in included.items()}
     counts['contract_evidence'] = sum(counts.values())
     counts['dependency_names'] = [symbol['name'] for symbol in included['dependencies']]
+    counts['pruned_low_value'] = pruned_low_value
     return text, counts
 
 
@@ -383,7 +423,63 @@ def _fast_exact_context(root: Path, prompt: str, budget: int) -> dict | None:
         'sufficient': sufficient,
         'quick_index': True,
         'edit_frontier': frontier,
+        'source_file_count': len(paths),
     }
+
+_CONTEXT_BLOCK = re.compile(r'(?=\n# [^\n]+\n)')
+
+
+def _estimate_context_cost(
+        root: Path, result: dict, prompt: str, source_count: int) -> dict:
+    """Estimate whether injected evidence beats ordinary search and file reads."""
+    symbol_ids = list(result.get('included', []))
+    symbol_ids.extend(anchor['id'] for anchor in result.get('anchors', []))
+    symbol_ids.extend(re.findall(
+        r'^# [^:]+: (.+)$', result.get('text', ''), flags=re.MULTILINE
+    ))
+    paths = list(dict.fromkeys(
+        sid.split('::', 1)[0] for sid in symbol_ids if '::' in sid
+    ))
+    source_units = 0
+    for relative in paths:
+        path = root / relative
+        try:
+            source_units += path.stat().st_size
+        except OSError:
+            continue
+    profile = task_profile(prompt)
+    native_reads = max(1, profile['estimated_native_reads'], len(paths))
+    if _intent_for(prompt) == 'edit':
+        native_reads = max(3, native_reads)
+    expected_native = (
+        source_units
+        + native_reads * 320
+        + 160
+        + min(1200, source_count * 2)
+    )
+    evidence_units = len(result.get('text', '').encode('utf-8'))
+    expected_followup = 0 if result.get('sufficient') else max(600, evidence_units // 2)
+    expected_airp = evidence_units + 420 + expected_followup
+    saving = 1.0 - expected_airp / max(1, expected_native)
+    return {
+        'expected_airp_units': expected_airp,
+        'expected_native_units': expected_native,
+        'expected_followup_units': expected_followup,
+        'expected_saving': round(saving, 4),
+        'minimum_saving': 0.15,
+        'basis': 'UTF-8 bytes plus deterministic tool-envelope estimate',
+        'activate': result.get('sufficient', False) and saving >= 0.15,
+    }
+
+
+def _atomic_context_blocks(text: str) -> list[str]:
+    """Split rendered evidence at block boundaries without slicing source."""
+    if not text:
+        return []
+    blocks = [block for block in _CONTEXT_BLOCK.split(text) if block]
+    return blocks if len(blocks) > 1 or blocks[0].startswith('\n# ') else [text]
+
+
 
 def build_prompt_context(root: str | Path, prompt: str, max_chars: int = 7800) -> str | None:
     """Build compact evidence before the first model call, without an MCP round trip."""
@@ -403,6 +499,14 @@ def build_prompt_context(root: str | Path, prompt: str, max_chars: int = 7800) -
         if result is None:
             result = repo.smart_context(task=prompt, budget=budget,
                                         intent=_intent_for(prompt), breadth='auto')
+        source_count = result.get('source_file_count')
+        if source_count is None:
+            source_count = repo.db.execute(
+                'SELECT COUNT(*) FROM file_lookup').fetchone()[0]
+        routing_cost = _estimate_context_cost(root, result, prompt, source_count)
+        result['routing_cost'] = routing_cost
+        if result.get('sufficient') and not routing_cost['activate']:
+            return None
         derived_facts = _derived_facts(repo, result, prompt)
         if _intent_for(prompt) == 'edit':
             for anchor in result.get('anchors', []):
@@ -423,9 +527,8 @@ def build_prompt_context(root: str | Path, prompt: str, max_chars: int = 7800) -
     status = 'sufficient' if result.get('sufficient') else 'partial'
     header = (
         '<airp-context>\n'
-        'AIRP computed this local source evidence before the first model request. '
-        'Use it before repository tools and do not repeat reads already answered by it. '
-        'Inspect source only when this evidence is partial or runtime behavior must be verified.\n'
+        'AIRP local evidence. Reuse it before repository reads; inspect more only '
+        'when partial or runtime verification requires it.\n'
         f'status: {status}\nanchors: {anchor_ids}\n'
     )
     if result.get('quick_index'):
@@ -435,20 +538,19 @@ def build_prompt_context(root: str | Path, prompt: str, max_chars: int = 7800) -
     if frontier is not None:
         header += ('edit_frontier: declarations={declarations}, dependencies={dependencies}, '
                    'tests={tests}, callers={callers}; '
-                   'edit_ready={ready}.\n'.format(
+                   'pruned_low_value={pruned_low_value}; edit_ready={ready}.\n'.format(
                        **frontier, ready='yes' if frontier['contract_evidence'] else 'no'))
     if _intent_for(prompt) == 'edit':
         edit_paths = list(dict.fromkeys(anchor['id'].split('::', 1)[0]
                                        for anchor in result['anchors']))
         if edit_paths:
             validation_hint = _validation_hint(root, result)
-            header += ('edit_scope: ' + ', '.join(edit_paths) + '\n'
-                       'edit_sequence: patch the named target from this evidence; run one focused '
-                       'behavior check; expand source reads or tests only if that check fails. '
-                       'A failed edit command or check means the task is incomplete: repair the '
-                       'change and rerun the check before finishing.\n'
-                       'edit_format: write actual newline characters; never insert literal shell '
-                       'newline escape text into source.\n')
+            header += (
+                'edit_scope: ' + ', '.join(edit_paths) + '\n'
+                'edit_sequence: patch the target; run one focused check; expand only '
+                'for missing evidence or failure; repair and rerun failed checks.\n'
+                'edit_format: write actual newline characters, never shell escape text.\n'
+            )
             if validation_hint:
                 header += 'validation_hint: ' + validation_hint + '\n'
             if edit_locations:
@@ -463,8 +565,73 @@ def build_prompt_context(root: str | Path, prompt: str, max_chars: int = 7800) -
     if derived_facts:
         header += 'derived_facts: ' + '; '.join(derived_facts) + '\n'
     suffix = '\n</airp-context>'
-    available = max(0, max_chars - len(header) - len(suffix))
-    return header + result['text'][:available] + suffix
+    blocks = _atomic_context_blocks(result['text'])
+    conservative_receipt = (
+        'evidence_state: blocked-partial\n'
+        'activation: abstained\n'
+        'reason: atomic_budget_exhausted\n'
+        f'omitted_blocks: {len(blocks)}\n'
+        'evidence_chars: 9999999\n'
+        'payload_hash: 0000000000000000\n'
+    )
+
+    def pack(prefix: str) -> tuple[list[str], int]:
+        selected = []
+        used = len(prefix) + len(conservative_receipt) + len(suffix)
+        for block in blocks:
+            if used + len(block) > max_chars:
+                break
+            selected.append(block)
+            used += len(block)
+        return selected, len(blocks) - len(selected)
+
+    selected, omitted_blocks = pack(header)
+    if omitted_blocks:
+        header = header.replace('status: sufficient\n', 'status: partial\n')
+        evidence_state = 'blocked-partial'
+        activation = 'enabled' if selected else 'abstained'
+        reason = 'atomic_budget_exhausted'
+    else:
+        evidence_state = 'sufficient' if result.get('sufficient') else 'blocked-partial'
+        activation = 'enabled'
+        reason = 'evidence_complete' if result.get('sufficient') else 'evidence_incomplete'
+
+    evidence_text = ''.join(selected)
+    payload_hash = hashlib.sha256(evidence_text.encode('utf-8')).hexdigest()[:16]
+    receipt = (
+        f'evidence_state: {evidence_state}\n'
+        f'activation: {activation}\n'
+        f'reason: {reason}\n'
+        f'omitted_blocks: {omitted_blocks}\n'
+        f'evidence_chars: {len(evidence_text)}\n'
+        f'payload_hash: {payload_hash}\n'
+    )
+    if len(header) + len(receipt) + len(suffix) > max_chars:
+        status = 'sufficient' if evidence_state == 'sufficient' else 'partial'
+        header = (
+            '<airp-context>\n'
+            f'status: {status}\n'
+            f'anchors: {anchor_ids}\n'
+        )
+        selected, omitted_blocks = pack(header)
+        if omitted_blocks:
+            evidence_state = 'blocked-partial'
+            activation = 'enabled' if selected else 'abstained'
+            reason = 'atomic_budget_exhausted'
+        evidence_text = ''.join(selected)
+        payload_hash = hashlib.sha256(evidence_text.encode('utf-8')).hexdigest()[:16]
+        receipt = (
+            f'evidence_state: {evidence_state}\n'
+            f'activation: {activation}\n'
+            f'reason: {reason}\n'
+            f'omitted_blocks: {omitted_blocks}\n'
+            f'evidence_chars: {len(evidence_text)}\n'
+            f'payload_hash: {payload_hash}\n'
+        )
+    payload = header + receipt + ''.join(selected) + suffix
+    if len(payload) > max_chars:
+        return None
+    return payload
 
 
 def process_hook(payload: dict) -> dict | None:

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 - 2026-09-14
+
+- Add evidence obligations for targets, behavior dependencies, and direct tests.
+- Select context by marginal information value while reserving required evidence.
+- Revalidate sufficiency after atomic context packing.
+- Abstain from sufficient Hook injection below a 15% estimated saving margin.
+- Add compact activation, omission, evidence-size, and payload-hash receipts.
+- Reduce V34 deterministic context characters by 17.58% across Python,
+  TypeScript, and Rust while preserving sufficient status.
+
 ## 0.6.1 - 2026-09-14
 
 - Added bounded edit frontiers for large unindexed repositories: declarations, direct dependencies, tests, callers, edit readiness, and focused validation.

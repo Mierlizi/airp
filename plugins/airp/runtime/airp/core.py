@@ -838,7 +838,10 @@ class Repository:
                 break
 
         candidates = {}
-        required_semantic = set()
+        required_obligations = {
+            anchor['id']: f"target:{anchor['id']}" for anchor in anchors
+        }
+
         def offer(sid, score, role, detail):
             previous = candidates.get(sid)
             if previous is None or score > previous[0]:
@@ -859,7 +862,8 @@ class Repository:
                     offer(edge['target'], 720 - rank * 20 + (12 if edge['kind'] == 'call' else 4),
                           'dependency', dependency_detail)
                     if profile['behavior_task']:
-                        required_semantic.add(edge['target'])
+                        required_obligations[edge['target']] = (
+                            f"behavior-dependency:{edge['target']}")
             if intent in ('edit', 'impact'):
                 incoming = self.relations(sid, 'in', limit=200,
                                           include_unresolved=False)['edges']
@@ -869,7 +873,11 @@ class Repository:
                     offer(edge['source'], 640 - rank * 20, 'caller', 'outline')
             if intent in ('edit', 'impact', 'test'):
                 detail = 'full' if intent in ('edit', 'test') else 'outline'
-                for test in self.relevant_tests(sid, task):
+                relevant_tests = self.relevant_tests(sid, task)
+                if intent == 'edit' and relevant_tests:
+                    direct_test = relevant_tests[0]['id']
+                    required_obligations[direct_test] = f'direct-test:{direct_test}'
+                for test in relevant_tests:
                     offer(test['id'], 820 - rank * 20, 'test', detail)
 
         known_hashes = set(known_hashes or [])
@@ -882,8 +890,18 @@ class Repository:
         used = 0
         pending = dict(candidates)
         rendered = {}
+        pruned_low_value = 0
+        marginal_value_floor = 2.0
+        role_cost = {
+            'task-anchor': 0,
+            'test': 40,
+            'dependency': 100,
+            'parent': 120,
+            'caller': 160,
+        }
         while pending:
             choices = []
+            low_value = set()
             for sid, (base_score, role, detail) in pending.items():
                 try:
                     symbol = self.symbol(sid)
@@ -897,14 +915,35 @@ class Repository:
                 terms = set(search_terms(body))
                 overlap = max((len(terms & prior) / max(1, len(terms | prior))
                                for prior in selected_terms), default=0)
-                choices.append((base_score - 260 * overlap, base_score, sid, role,
+                novelty = max(0.15, 1.0 - overlap)
+                block_size = len(
+                    f"\n# {role}: {sid}\n{body.rstrip()}\n".encode('utf-8'))
+                marginal_value = (
+                    (base_score - 260 * overlap) * novelty
+                    / max(1, block_size + role_cost.get(role, 120))
+                )
+                if (sid not in required_obligations and role != 'task-anchor'
+                        and marginal_value < marginal_value_floor):
+                    low_value.add(sid)
+                    continue
+                requirement_rank = (
+                    2 if role == 'task-anchor'
+                    else 1 if sid in required_obligations
+                    else 0
+                )
+                choices.append((requirement_rank, marginal_value, base_score, sid, role,
                                 detail, symbol, body, terms))
-            for sid in set(pending) - {choice[2] for choice in choices}:
+            for sid in low_value:
+                pending.pop(sid, None)
+                omitted.append(sid)
+                pruned_low_value += 1
+            for sid in set(pending) - {choice[3] for choice in choices}:
                 pending.pop(sid, None)
             if not choices:
                 break
-            _, base_score, sid, role, detail, symbol, body, terms = max(
-                choices, key=lambda row: (row[0], row[1], row[2]))
+            (_, marginal_value, base_score, sid, role,
+             detail, symbol, body, terms) = max(
+                choices, key=lambda row: (row[0], row[1], row[2], row[3]))
             pending.pop(sid)
             if known_symbols.get(sid) == symbol['hash'] or symbol['hash'] in known_hashes:
                 reused.append(sid)
@@ -918,8 +957,12 @@ class Repository:
                 content += block
                 used += block_size
                 included.append(sid)
-                rendered[sid] = {'role': role, 'detail': detail,
-                                 'score': round(base_score, 3)}
+                rendered[sid] = {
+                    'role': role,
+                    'detail': detail,
+                    'score': round(base_score, 3),
+                    'marginal_value': round(marginal_value, 3),
+                }
                 selected_terms.append(terms)
             else:
                 omitted.append(sid)
@@ -950,6 +993,12 @@ class Repository:
         missing_identifiers = [
             name for name in required_identifiers
             if identifier_key(name) not in searchable_evidence]
+        missing_evidence = [
+            label for sid, label in required_obligations.items()
+            if sid not in represented
+        ]
+        missing_evidence.extend(f'identifier:{name}' for name in missing_identifiers)
+        evidence_state = 'sufficient' if not missing_evidence else 'blocked-partial'
         result = {'text': content, 'anchors': anchors, 'included': included,
                   'omitted': list(dict.fromkeys(omitted)), 'reused': reused,
                   'selection': rendered, 'intent': intent, 'breadth': breadth, 'budget': budget,
@@ -959,9 +1008,20 @@ class Repository:
                   'token_estimate': ('exact tokenizer count' if encoding
                                      else 'bytes/4; model tokenizer may differ'),
                   'receipt_id': new_receipt,
-                  'sufficient': (all(sid in represented for sid in anchor_ids)
-                                 and required_semantic <= represented
-                                 and not missing_identifiers),
+                  'sufficient': evidence_state == 'sufficient',
+                  'evidence_state': evidence_state,
+                  'routing_cost': {
+                      'pruned_low_value': pruned_low_value,
+                      'marginal_value_floor': marginal_value_floor,
+                  },
+                  'evidence': {
+                      'required': list(required_obligations.values()),
+                      'represented': [
+                          label for sid, label in required_obligations.items()
+                          if sid in represented
+                      ],
+                      'missing': missing_evidence,
+                  },
                   'coverage': {'required_identifiers': required_identifiers,
                                'missing_identifiers': missing_identifiers},
                   'complete': False, 'retrieval': match_result['method']}

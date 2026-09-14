@@ -4,7 +4,7 @@
 
 ## Codex 插件
 
-项目已包含可安装插件 [plugins/airp](plugins/airp)。当前版本通过 `UserPromptSubmit` Hook 在第一次模型请求前完成本地索引和自适应检索，从根本上消除分析型 MCP 的“模型 → 工具 → 模型”额外往返。默认插件不加载 MCP；独立 CLI 和 MCP 适配器仍保留供显式兼容与事务流程使用。当前机器已安装 `airp@personal` 版本 `0.6.1+codex.20260914091946`，新建 Codex 任务后加载。
+项目已包含可安装插件 [plugins/airp](plugins/airp)。当前版本通过 `UserPromptSubmit` Hook 在第一次模型请求前完成本地索引和自适应检索，从根本上消除分析型 MCP 的“模型 → 工具 → 模型”额外往返。默认插件不加载 MCP；独立 CLI 和 MCP 适配器仍保留供显式兼容与事务流程使用。当前机器已安装 `airp@personal` 版本 `0.7.0+codex.20260914105108`，新建 Codex 任务后加载。
 
 插件开发验证：
 
@@ -41,6 +41,8 @@ python scripts/install_local_plugin.py
 
 V32 增加大型未索引仓库的精确符号快速启动。在 Django、NestJS、ripgrep、Redis 四个固定提交（56,409–532,132 行索引源码）的配对模型实验中，两组均 4/4 正确，总模型 Token 从 224,923 降到 76,852，减少 **65.83%**；工具调用从 9 降到 1。首次证据包耗时 0.50–3.71 秒、大小 616–1,898 字符。另一个 Python 行为编辑复测两组均成功，Token 减少 **73.08%**。详见 [大型仓库底层优化报告](docs/V32_LARGE_REPOSITORY_FOUNDATIONAL_OPTIMIZATION_20260913.md)。
 V34 将大型仓库快速路径扩展为有界“编辑前沿”：目标实现之外，按预算加入声明、同文件依赖、测试、调用点和验证策略；缺少契约证据时降级为 `partial`。Django、NestJS、ripgrep、Redis 的 4 个真实编辑任务中，两组均 4/4 通过隐藏验证，总模型 Token 从 754,268 降到 465,329，减少 **38.31%**；工具调用减少 **26.67%**，耗时减少 **15.77%**。Python、TypeScript、Rust 分别减少 57.84%、49.42%、25.21%，C 增加 1.57%，因此 C 验证路径仍需复测。详见 [大型仓库编辑前沿报告](docs/V34_LARGE_REPOSITORY_EDIT_FRONTIER_20260914.md)。
+
+V35 引入证据义务、边际信息价值剪枝、原子上下文装配、截断后充分性复核和 15% 预计收益准入线。相同大型仓库确定性任务中，Python、TypeScript、Rust 的上下文字符合计从 7,348 降至 6,056，减少 **17.58%**，三项均保持 `sufficient`；这是零模型调用的上下文结果，尚未替代 V34 的模型配对结论。详见 [可靠性约束路由报告](docs/V35_RELIABILITY_COST_ROUTING_20260914.md)。
 
 ## 立即体验（Windows PowerShell）
 
