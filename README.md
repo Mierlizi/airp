@@ -1,16 +1,17 @@
-# AIRP v0.7.1
+# AIRP v0.8.0
 
 面向 Coding Agent 的本地程序操作层。v0.6 在 SQLite FTS5 召回和自适应取证之上增加成本感知响应：普通 MCP 调用自动去除审计元数据，并在单个小文件更便宜时直接交付完整文件。它保留预算、锚点、receipt 和 Python 受控编辑安全性。核心不调用模型 API。
 
 ## Codex 插件
 
-项目已包含可安装插件 [plugins/airp](plugins/airp)。当前版本通过 `UserPromptSubmit` Hook 在第一次模型请求前完成本地索引和自适应检索，从根本上消除分析型 MCP 的“模型 → 工具 → 模型”额外往返。默认插件不加载 MCP；独立 CLI 和 MCP 适配器仍保留供显式兼容与事务流程使用。当前机器已安装 `airp@personal` 版本 `0.7.1+codex.20260914191952`，新建 Codex 任务后加载。
+项目已包含可安装插件 [plugins/airp](plugins/airp)。当前版本通过 `UserPromptSubmit` Hook 在第一次模型请求前完成本地索引和自适应检索，从根本上消除分析型 MCP 的“模型 → 工具 → 模型”额外往返。默认插件不加载 MCP；独立 CLI 和 MCP 适配器仍保留供显式兼容与事务流程使用。当前机器已安装 `airp@personal` 版本 `0.8.0+codex.20260914194907`，新建 Codex 任务后加载。
 
 插件开发验证：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/check_plugin.py
 .\.venv\Scripts\python.exe scripts/check_clean_install.py
+.\.venv\Scripts\python.exe scripts/check_integrations.py
 ```
 
 从 GitHub 检出后，可先预览再安装到个人 Codex Marketplace：
@@ -19,6 +20,30 @@
 python scripts/install_local_plugin.py --dry-run
 python scripts/install_local_plugin.py
 ```
+
+## 跨客户端适配
+
+v0.8 将检索核心与宿主协议分离。同一份本地证据编译器可用于 Codex、Claude Code、DeepSeek Harness、Cursor 和自研 Agent；模型供应商本身不需要专用算法分支。
+
+```shell
+# Claude Code：生成固定 Python 解释器的自包含插件副本
+python scripts/configure_client.py claude-code --repo TARGET --output .airp-clients/claude
+claude --plugin-dir ABSOLUTE_OUTPUT_PATH
+
+# DeepSeek Harness：生成使用官方 Codex Hook bridge 的本地 Bundle
+python scripts/configure_client.py deepseek-harness --repo TARGET --output .airp-clients/dsh
+dsh plugin --profile web add ABSOLUTE_OUTPUT_PATH
+
+# Cursor：生成自包含 stdio MCP 配置，再把 mcpServers.airp 合并进项目配置
+python scripts/configure_client.py cursor --repo TARGET --output .airp-clients/cursor
+
+# 其他 Harness：在第一次模型请求前取得文本或结构化决策
+python -m airp --repo TARGET precontext "Explain Target.execute" --host generic --format json
+```
+
+Claude Code 也可以从本仓库 Marketplace 发现插件：`claude plugin marketplace add Mierlizi/airp`。直接 Marketplace 安装依赖 PATH 中的 `python` 为 3.11+；上面的生成器会验证并固定解释器，更适合工程试点。DeepSeek Harness 当前处于开发者预览，适配器通过其官方 `@deepseek-ai/dsh-hooks-codex` 兼容层降低接口变动风险。Cursor 使用 MCP，因此会保留工具模式和调用往返开销，预计收益不能直接套用 Hook 实验。
+
+当前验证覆盖协议契约和独立子进程；本机未安装 Claude、`dsh` 或 Cursor Agent CLI，尚未完成这些宿主 UI 的端到端触发验证。详细矩阵见 [跨客户端兼容说明](docs/CROSS_CLIENT_COMPATIBILITY.md)。
 
 ## v0.2 Token 实验
 
@@ -93,7 +118,7 @@ airp --repo /absolute/path/to/repository index
 | 受控修改 | 完整函数替换、默认 diff 预览、哈希前置条件、写前编译 |
 | 事务 | begin / diff / commit / rollback；落盘前保留原始字节备份 |
 | 验证与测试 | parse + compile、unittest / pytest、超时、有限输出、测试结果绑定 Python 源码快照 |
-| AI 接口 | 默认插件使用 UserPromptSubmit 预模型 Hook；JSON CLI 和 stdio MCP 作为独立兼容接口保留 |
+| AI 接口 | Codex/Claude Code/DeepSeek Harness 预模型 Hook；Cursor/通用 stdio MCP；自研 Harness `precontext` JSON/文本入口 |
 | 观测 | 隐私保护的 Hook 启用/跳过/失败事件、原因、延迟与估算成本；工具次数、响应字节和 Benchmark 汇总 |
 
 ## 修改流程

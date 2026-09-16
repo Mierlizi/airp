@@ -6,6 +6,7 @@ import sys
 import sqlite3
 
 from .core import Repository
+from .protocol import SUPPORTED_HOSTS
 
 
 def parser():
@@ -20,6 +21,11 @@ def parser():
     find.add_argument('query', nargs='?', default='')
     find.add_argument('--kind')
     find.add_argument('--limit', type=int, default=30)
+    precontext = sub.add_parser('precontext')
+    precontext.add_argument('task')
+    precontext.add_argument('--host', choices=SUPPORTED_HOSTS, default='generic')
+    precontext.add_argument('--format', choices=['text', 'json'], default='text')
+    precontext.add_argument('--max-chars', type=int, default=7800)
     pack = sub.add_parser('pack')
     pack.add_argument('task')
     pack.add_argument('--budget', type=int, default=3000)
@@ -60,6 +66,17 @@ def main():
         if tool == 'hook-report':
             from .diagnostics import hook_report
             print(json.dumps(hook_report(root), ensure_ascii=False, indent=2))
+            return
+        if tool == 'precontext':
+            from .diagnostics import record_hook_event
+            from .hook import build_prompt_decision
+            decision = build_prompt_decision(root, args['task'], args['max_chars'])
+            decision['host'] = args['host']
+            record_hook_event(root, decision)
+            if args['format'] == 'json':
+                print(json.dumps(decision, ensure_ascii=False, indent=2))
+            elif decision.get('context'):
+                print(decision['context'])
             return
         if tool == 'serve':
             from .mcp_server import serve

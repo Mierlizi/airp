@@ -10,3 +10,4 @@ benchmarks/corpus/
 benchmarks/corpus-large/
 benchmarks/runs/
 *.docx
+.airp-clients/

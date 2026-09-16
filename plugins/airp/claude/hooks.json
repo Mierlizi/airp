@@ -1,0 +1,16 @@
+{
+  "description": "Inject compact AIRP source evidence before Claude Code model requests.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/user_prompt_submit.py\" --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

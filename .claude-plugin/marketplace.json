@@ -1,0 +1,21 @@
+{
+  "name": "airp-marketplace",
+  "description": "AIRP local repository context adapters for AI coding agents.",
+  "owner": {
+    "name": "Mierlizi"
+  },
+  "plugins": [
+    {
+      "name": "airp",
+      "source": "./plugins/airp",
+      "version": "0.8.0",
+      "description": "Inject compact local repository evidence before model requests",
+      "category": "Developer Tools",
+      "tags": [
+        "codebase",
+        "context",
+        "token"
+      ]
+    }
+  ]
+}

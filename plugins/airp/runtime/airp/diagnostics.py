@@ -11,7 +11,7 @@ from statistics import mean
 EVENT_FILE = 'hook-events.jsonl'
 MAX_EVENT_BYTES = 1_048_576
 _ALLOWED_FIELDS = {
-    'activation', 'reason', 'evidence_state', 'intent', 'breadth',
+    'host', 'activation', 'reason', 'evidence_state', 'intent', 'breadth',
     'source_file_count', 'context_chars', 'evidence_chars', 'omitted_blocks',
     'expected_airp_units', 'expected_native_units', 'expected_followup_units',
     'expected_saving', 'minimum_saving', 'elapsed_ms', 'exception_type',
@@ -71,6 +71,7 @@ def hook_report(root: str | Path) -> dict:
                 continue
             if isinstance(event, dict) and event.get('schema_version') == 1:
                 events.append(event)
+    hosts = Counter(event.get('host', 'unknown') for event in events)
     activations = Counter(event.get('activation', 'unknown') for event in events)
     reasons = Counter(event.get('reason', 'unknown') for event in events)
     latencies = [float(event['elapsed_ms']) for event in events
@@ -82,6 +83,7 @@ def hook_report(root: str | Path) -> dict:
     return {
         'schema_version': 1,
         'events': count,
+        'by_host': dict(sorted(hosts.items())),
         'by_activation': dict(sorted(activations.items())),
         'by_reason': dict(sorted(reasons.items())),
         'activation_rate': round(enabled / count, 4) if count else 0.0,

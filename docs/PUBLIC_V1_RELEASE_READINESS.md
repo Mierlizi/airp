@@ -2,7 +2,7 @@
 
 ## 产品类型与使用方式
 
-AIRP 是 Codex 的本地预模型代码上下文插件。开发者正常用自然语言提出代码问题；`UserPromptSubmit` Hook 在第一次模型请求前读取本地仓库，选出与任务有关的实现、测试和关系证据，再把小型 `<airp-context>` 注入模型上下文。日常使用不需要手动调用 AIRP 工具。
+AIRP 是适用于 Codex、Claude Code、DeepSeek Harness 及 MCP 客户端的本地预模型代码上下文插件。开发者正常用自然语言提出代码问题；`UserPromptSubmit` Hook 在第一次模型请求前读取本地仓库，选出与任务有关的实现、测试和关系证据，再把小型 `<airp-context>` 注入模型上下文。日常使用不需要手动调用 AIRP 工具。
 
 从公开仓库安装：
 
@@ -68,7 +68,7 @@ V32 各语言的大型精确阅读结果：Python 70.57%、TypeScript 76.76%、R
 - [x] 插件不含本机绝对路径，自带 AIRP 运行时。
 - [x] `.gitignore` 排除克隆语料、原始运行轨迹、缓存、虚拟环境和 Word 草稿。
 - [x] 提供可审查的个人 Marketplace 安装脚本、Security、Contributing、Changelog 和实验报告。
-- [x] 78 项测试、Skill、插件清单和进程级 Hook 验证通过。
+- [x] 86 项测试、Skill、插件清单和进程级 Hook 验证通过。
 - [x] stdlib-only 干净虚拟环境验证解释器固定、Hook 启动、证据返回与诊断汇总。
 - [x] 本地 Hook 事件覆盖启用、跳过和失败，且不记录提示词、路径、符号名或源码。
 - [x] 使用 Apache-2.0 许可证，并补充 `pyproject.toml` 的 license 字段。

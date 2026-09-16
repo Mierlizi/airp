@@ -10,10 +10,15 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = [
     'README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'SECURITY.md', 'pyproject.toml',
-    'plugins/airp/.codex-plugin/plugin.json', 'plugins/airp/hooks/hooks.json',
+    'plugins/airp/.codex-plugin/plugin.json', 'plugins/airp/.claude-plugin/plugin.json',
+    '.claude-plugin/marketplace.json', 'plugins/airp/claude/hooks.json',
+    'plugins/airp/hooks/hooks.json',
+    'airp/protocol.py', 'plugins/airp/runtime/airp/protocol.py',
     'plugins/airp/runtime/airp/hook.py', 'plugins/airp/runtime/airp/diagnostics.py',
-    'scripts/check_clean_install.py', 'benchmarks/published/v1_verified_results.json',
+    'scripts/check_clean_install.py', 'scripts/check_integrations.py',
+    'scripts/configure_client.py', 'benchmarks/published/v1_verified_results.json',
     'benchmarks/published/engineering-routing-local-v36.json',
+    'docs/CROSS_CLIENT_COMPATIBILITY.md',
 ]
 SCAN_ROOTS = ['airp', 'plugins', 'scripts', 'docs', 'README.md', 'pyproject.toml']
 BLOCKED = [re.compile('D:' + r'/program projects', re.I),

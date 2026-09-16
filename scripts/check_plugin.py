@@ -26,6 +26,12 @@ def check(plugin: Path) -> None:
         # records the user's actual interpreter path in the installed copy.
         assert ('D:' + '/program projects') not in handlers[0]['command']
     assert (plugin / 'runtime/airp/hook.py').is_file()
+    claude = json.loads((plugin / '.claude-plugin/plugin.json').read_text(encoding='utf-8'))
+    assert claude['name'] == 'airp' and claude['hooks'] == './claude/hooks.json'
+    claude_hooks = json.loads((plugin / 'claude/hooks.json').read_text(encoding='utf-8'))
+    claude_command = claude_hooks['hooks']['UserPromptSubmit'][0]['hooks'][0]['command']
+    assert '${CLAUDE_PLUGIN_ROOT}' in claude_command and '--host claude-code' in claude_command
+    assert (plugin / 'bin/airp.py').is_file()
     with tempfile.TemporaryDirectory(prefix='airp-plugin-') as folder:
         shutil.copytree(PROJECT / 'examples/shop', folder, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns('.airp', '__pycache__'))

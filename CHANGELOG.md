@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 - 2026-09-16
+
+- Add a host-neutral context request and hook response protocol.
+- Add a native Claude Code plugin manifest, Hook configuration, and GitHub marketplace.
+- Generate pinned DeepSeek Harness bundles using its official Codex Hook bridge.
+- Generate self-contained Cursor stdio MCP configurations.
+- Add `precontext` text/JSON output for custom OpenAI- and Anthropic-compatible harnesses.
+- Attribute privacy-preserving field-trial events and reports by host.
+- Add isolated subprocess checks for Claude Code, DeepSeek Harness, and Cursor adapters.
+
 ## 0.7.1 - 2026-09-14
 
 - Withhold source bodies when evidence is partial or atomic packing exceeds the budget.

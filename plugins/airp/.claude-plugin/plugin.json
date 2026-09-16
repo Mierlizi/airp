@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "airp",
+  "displayName": "AIRP",
+  "version": "0.8.0",
+  "description": "Inject compact local repository evidence before Claude Code model requests.",
+  "author": {
+    "name": "Mierlizi",
+    "url": "https://github.com/Mierlizi"
+  },
+  "homepage": "https://github.com/Mierlizi/airp",
+  "repository": "https://github.com/Mierlizi/airp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "codebase",
+    "context",
+    "token",
+    "repository"
+  ],
+  "skills": "./skills/",
+  "hooks": "./claude/hooks.json"
+}

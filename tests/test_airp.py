@@ -999,6 +999,7 @@ class RepositoryTests(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual(2, report['events'])
         self.assertEqual({'enabled': 1, 'skipped': 1}, report['by_activation'])
+        self.assertEqual({'codex': 2}, report['by_host'])
         self.assertEqual(0.5, report['activation_rate'])
         self.assertIn('latency_ms', report)
         self.assertIn('estimated_units', report)

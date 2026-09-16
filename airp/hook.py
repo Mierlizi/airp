@@ -19,6 +19,7 @@ from .core import (
     task_profile,
 )
 from .graph import analyze, sources
+from .protocol import ContextRequest, render_hook_output
 
 
 CODE_SIGNALS = (
@@ -748,26 +749,20 @@ def build_prompt_context(root: str | Path, prompt: str,
     return build_prompt_decision(root, prompt, max_chars)['context']
 
 
-def process_hook(payload: dict) -> dict | None:
-    """Convert a Codex hook payload into optional additional developer context."""
+def process_hook(payload: dict, host: str = 'codex') -> dict | None:
+    """Convert a supported host payload into optional additional context."""
     from .diagnostics import record_hook_event
 
-    prompt = payload.get('prompt') or ''
-    root = payload.get('cwd') or '.'
-    decision = build_prompt_decision(root, prompt)
-    record_hook_event(root, decision)
-    context = decision.get('context')
-    if not context:
-        return None
-    return {'hookSpecificOutput': {
-        'hookEventName': 'UserPromptSubmit',
-        'additionalContext': context,
-    }}
+    request = ContextRequest.from_hook(payload, host=host)
+    decision = build_prompt_decision(request.root, request.prompt, request.max_chars)
+    decision['host'] = request.host
+    record_hook_event(request.root, decision)
+    return render_hook_output(decision.get('context'))
 
 
-def main() -> None:
+def main(host: str = 'codex') -> None:
     try:
-        output = process_hook(json.load(sys.stdin))
+        output = process_hook(json.load(sys.stdin), host=host)
         if output:
             print(json.dumps(output, ensure_ascii=False, separators=(',', ':')))
     except Exception:
