@@ -1,10 +1,10 @@
-# AIRP v0.8.0
+# AIRP v0.9.0
 
-面向 Coding Agent 的本地程序操作层。v0.6 在 SQLite FTS5 召回和自适应取证之上增加成本感知响应：普通 MCP 调用自动去除审计元数据，并在单个小文件更便宜时直接交付完整文件。它保留预算、锚点、receipt 和 Python 受控编辑安全性。核心不调用模型 API。
+面向 Coding Agent 的本地程序操作层。v0.9 在 SQLite FTS5、Tree-sitter 和自适应取证之上增加可选语言服务器语义关系，同时保留成本路由、证据充分性、原子上下文装配和 Python 受控编辑安全性。默认预模型 Hook 避免分析型 MCP 的额外模型往返；核心不调用模型 API。
 
 ## Codex 插件
 
-项目已包含可安装插件 [plugins/airp](plugins/airp)。当前版本通过 `UserPromptSubmit` Hook 在第一次模型请求前完成本地索引和自适应检索，从根本上消除分析型 MCP 的“模型 → 工具 → 模型”额外往返。默认插件不加载 MCP；独立 CLI 和 MCP 适配器仍保留供显式兼容与事务流程使用。当前机器已安装 `airp@personal` 版本 `0.8.0+codex.20260914194907`，新建 Codex 任务后加载。
+项目已包含可安装插件 [plugins/airp](plugins/airp)。当前版本通过 `UserPromptSubmit` Hook 在第一次模型请求前完成本地索引和自适应检索，从根本上消除分析型 MCP 的“模型 → 工具 → 模型”额外往返。默认插件不加载 MCP；独立 CLI 和 MCP 适配器仍保留供显式兼容与事务流程使用。当前源码插件版本为 `0.9.0+codex.20260916054700`；安装后新建 Codex 任务加载。
 
 插件开发验证：
 
@@ -44,6 +44,19 @@ python -m airp --repo TARGET precontext "Explain Target.execute" --host generic 
 Claude Code 也可以从本仓库 Marketplace 发现插件：`claude plugin marketplace add Mierlizi/airp`。直接 Marketplace 安装依赖 PATH 中的 `python` 为 3.11+；上面的生成器会验证并固定解释器，更适合工程试点。DeepSeek Harness 当前处于开发者预览，适配器通过其官方 `@deepseek-ai/dsh-hooks-codex` 兼容层降低接口变动风险。Cursor 使用 MCP，因此会保留工具模式和调用往返开销，预计收益不能直接套用 Hook 实验。
 
 当前验证覆盖协议契约和独立子进程；本机未安装 Claude、`dsh` 或 Cursor Agent CLI，尚未完成这些宿主 UI 的端到端触发验证。详细矩阵见 [跨客户端兼容说明](docs/CROSS_CLIENT_COMPATIBILITY.md)。
+
+## 可选语言语义层
+
+v0.9 为静态候选图增加按源码版本绑定的语义边覆盖层。Rust Analyzer 和 TypeScript Language Server 的 Call Hierarchy 可以生成 `semantic_exact` 调用边；同一条静态边会被替换，其他静态边继续作为回退。源码变化后整份覆盖层自动标为 `stale` 并停止参与关系查询、影响分析和编辑上下文。
+
+```shell
+airp --repo TARGET index
+airp --repo TARGET semantic-build rust
+airp --repo TARGET semantic-build typescript --server PATH_TO_TYPESCRIPT_LANGUAGE_SERVER --server-arg=--stdio
+airp --repo TARGET semantic-status
+```
+
+真实进程检查已在一次性 Rust 与 TypeScript 项目中分别识别 2 个函数并生成 1 条精确调用边，均无单符号失败。该结果验证协议和边映射，不是新的 Token 降幅实验。安装、版本兼容与安全边界见 [语义关系后端](docs/SEMANTIC_RELATION_BACKENDS.md)。
 
 ## v0.2 Token 实验
 
@@ -109,9 +122,9 @@ airp --repo /absolute/path/to/repository index
 
 ## 已实现
 
-| 能力 | v0.6 行为 |
+| 能力 | v0.9 行为 |
 |---|---|
-| Program Database | Python AST 加可选 Tree-sitter；逐文件复用；SQLite 函数、类、模块赋值、入边、出边索引 |
+| Program Database | Python AST 加可选 Tree-sitter；逐文件复用；SQLite 符号和关系索引；可选 Rust/TypeScript LSP 语义边覆盖 |
 | 稳定定位 | `相对文件路径::限定名称`；插入空行不改变地址，重命名/移动会改变地址 |
 | 查询 | find / get / refs / callers / callees / dependencies / affected |
 | Context Compiler | 大仓库精确符号快速启动与有界编辑前沿；SQLite FTS5 候选召回、本地重排、符号图和多样性惩罚；大符号按任务提取聚焦源码行；自动紧凑响应与小文件成本旁路 |

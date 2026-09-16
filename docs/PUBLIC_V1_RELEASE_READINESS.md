@@ -68,7 +68,7 @@ V32 各语言的大型精确阅读结果：Python 70.57%、TypeScript 76.76%、R
 - [x] 插件不含本机绝对路径，自带 AIRP 运行时。
 - [x] `.gitignore` 排除克隆语料、原始运行轨迹、缓存、虚拟环境和 Word 草稿。
 - [x] 提供可审查的个人 Marketplace 安装脚本、Security、Contributing、Changelog 和实验报告。
-- [x] 86 项测试、Skill、插件清单和进程级 Hook 验证通过。
+- [x] 97 项测试、Skill、插件清单、进程级 Hook 和语义覆盖层验证通过。
 - [x] stdlib-only 干净虚拟环境验证解释器固定、Hook 启动、证据返回与诊断汇总。
 - [x] 本地 Hook 事件覆盖启用、跳过和失败，且不记录提示词、路径、符号名或源码。
 - [x] 使用 Apache-2.0 许可证，并补充 `pyproject.toml` 的 license 字段。

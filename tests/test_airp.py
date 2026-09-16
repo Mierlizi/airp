@@ -941,7 +941,7 @@ class RepositoryTests(unittest.TestCase):
     def test_hook_derives_collection_cardinality(self):
         context = build_prompt_context(
             PROJECT, 'Repository.execute中的read_only集合包含多少个操作？')
-        self.assertIn('derived_facts: read_only cardinality = 11', context)
+        self.assertIn('derived_facts: read_only cardinality = 12', context)
 
     def test_hook_protocol_output_and_quiet_non_code_path(self):
         output = process_hook({

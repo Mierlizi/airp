@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0 - 2026-09-16
+
+- Add a revision-bound semantic relationship overlay with strict endpoint validation.
+- Prefer exact semantic calls over duplicate static candidates while retaining fallback edges.
+- Invalidate the complete overlay whenever indexed source content changes.
+- Add bounded LSP Call Hierarchy adapters for Rust Analyzer and TypeScript Language Server.
+- Wait for rust-analyzer's documented quiescent status before querying relationships.
+- Add `semantic-build`, `semantic-import`, and `semantic-status` commands.
+- Verify real Rust and TypeScript language-server processes on disposable repositories.
+
 ## 0.8.0 - 2026-09-16
 
 - Add a host-neutral context request and hook response protocol.

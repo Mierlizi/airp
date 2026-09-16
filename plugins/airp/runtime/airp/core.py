@@ -18,6 +18,7 @@ import time
 import uuid
 
 from .graph import GRAPH_SCHEMA, build, decode, digest, sources, warm_languages
+from .semantic import index_fingerprint, merge_edges, normalize_overlay
 
 
 class AirpError(ValueError):
@@ -312,6 +313,60 @@ class Repository:
         self.require_index()
         graph = self.load('graph')
         return graph
+
+    def _semantic_overlay(self):
+        manifest = self.require_index()
+        overlay = self.load('semantic_overlay')
+        current = index_fingerprint(manifest)
+        if overlay is None:
+            return None, {'state': 'absent', 'index_fingerprint': current,
+                          'provider': None, 'edges': 0}
+        if overlay.get('index_fingerprint') != current:
+            return None, {'state': 'stale', 'index_fingerprint': current,
+                          'provider': overlay.get('provider'),
+                          'edges': len(overlay.get('edges', []))}
+        return overlay, {'state': 'active', 'index_fingerprint': current,
+                         'provider': overlay.get('provider'),
+                         'edges': len(overlay.get('edges', []))}
+
+    def semantic_status(self):
+        """Report whether optional language-semantic facts match this source snapshot."""
+        _, status = self._semantic_overlay()
+        return status
+
+    def semantic_import(self, document):
+        """Validate and atomically replace the optional semantic relationship overlay."""
+        manifest = self.require_index()
+        rows = self.db.execute('SELECT data FROM symbol_lookup').fetchall()
+        symbols = [json.loads(row[0]) for row in rows]
+        overlay = normalize_overlay(document, manifest, symbols)
+        self.save('semantic_overlay', overlay)
+        return {'state': 'active', 'provider': overlay['provider'],
+                'index_fingerprint': overlay['index_fingerprint'],
+                'edges': len(overlay['edges'])}
+
+    def semantic_build(self, language, server=None, server_args=None,
+                       max_symbols=200, timeout=10.0):
+        """Build and import a bounded semantic overlay from an LSP Call Hierarchy."""
+        from .lsp_semantic import DEFAULT_SERVERS, LspError, LspSemanticBackend
+
+        if not 0.1 <= timeout <= 120:
+            raise AirpError('timeout must be between 0.1 and 120 seconds')
+        manifest = self.require_index()
+        rows = self.db.execute('SELECT data FROM symbol_lookup').fetchall()
+        symbols = [json.loads(row[0]) for row in rows]
+        command = ([str(server), *(server_args or [])] if server else
+                   [*DEFAULT_SERVERS.get(language, ()), *(server_args or [])])
+        try:
+            backend = LspSemanticBackend(
+                self.root, manifest, symbols, language, command=command,
+                timeout=timeout)
+            document = backend.build(max_symbols=max_symbols)
+        except LspError as error:
+            raise AirpError(str(error)) from error
+        diagnostics = document.pop('diagnostics')
+        return self.semantic_import(document) | {'language': language,
+                                                 'diagnostics': diagnostics}
 
     def symbol(self, sid):
         self.require_index()
@@ -617,12 +672,7 @@ class Repository:
     def get(self, symbol_id):
         return self.symbol(symbol_id)
 
-    def relations(self, symbol_id, direction='out', kind=None, limit=50, include_unresolved=True):
-        self.symbol(symbol_id)
-        if direction not in ('in', 'out'):
-            raise AirpError('direction must be in or out')
-        if not 1 <= limit <= 200:
-            raise AirpError('limit must be between 1 and 200')
+    def _relation_edge_data(self, symbol_id, direction, kind, include_unresolved):
         key = 'target' if direction == 'in' else 'source'
         clauses, values = [f'{key}=?'], [symbol_id]
         if kind is not None:
@@ -631,14 +681,47 @@ class Repository:
         if not include_unresolved:
             clauses.append('target IS NOT NULL')
         where = ' AND '.join(clauses)
-        total = self.db.execute(f'SELECT COUNT(*) FROM edge_lookup WHERE {where}', values).fetchone()[0]
-        rows = self.db.execute(f'SELECT data FROM edge_lookup WHERE {where} LIMIT ?',
-                               (*values, limit)).fetchall()
-        edges = [json.loads(row[0]) for row in rows]
-        compact_edges = [{k: e[k] for k in ('source', 'target', 'name', 'kind', 'line', 'confidence')}
-                         for e in edges]
+        rows = self.db.execute(f'SELECT data FROM edge_lookup WHERE {where}', values).fetchall()
+        static_edges = [json.loads(row[0]) for row in rows]
+        overlay, semantic = self._semantic_overlay()
+        semantic_edges = []
+        if overlay:
+            for edge in overlay['edges']:
+                if edge[key] != symbol_id:
+                    continue
+                if kind is not None and edge['kind'] != kind:
+                    continue
+                if not include_unresolved and edge.get('target') is None:
+                    continue
+                semantic_edges.append(edge)
+        return merge_edges(static_edges, semantic_edges), semantic
+
+    def relations(self, symbol_id, direction='out', kind=None, limit=50, include_unresolved=True):
+        self.symbol(symbol_id)
+        if direction not in ('in', 'out'):
+            raise AirpError('direction must be in or out')
+        if not 1 <= limit <= 200:
+            raise AirpError('limit must be between 1 and 200')
+        edges, semantic = self._relation_edge_data(
+            symbol_id, direction, kind, include_unresolved)
+        total = len(edges)
+        compact_edges = []
+        for edge in edges[:limit]:
+            compact = {field: edge[field] for field in (
+                'source', 'target', 'name', 'kind', 'line', 'confidence')}
+            if edge.get('provider'):
+                compact['provider'] = edge['provider']
+            compact_edges.append(compact)
+        if semantic['state'] == 'active':
+            analysis = ('Semantic relationships from the configured provider take precedence; '
+                        'static candidates remain as fallback and dynamic edges may be missing.')
+        elif semantic['state'] == 'stale':
+            analysis = ('Semantic relationships are stale and were ignored; static candidates only; '
+                        'dynamic edges may be missing.')
+        else:
+            analysis = 'Static candidates; dynamic edges may be missing.'
         return {'edges': compact_edges, 'total': total, 'truncated': total > limit,
-                'complete': False, 'analysis': 'Static candidates; dynamic edges may be missing.'}
+                'complete': False, 'analysis': analysis, 'semantic': semantic}
 
     def refs(self, symbol_id):
         return self.relations(symbol_id, 'in', 'reference')
@@ -657,8 +740,10 @@ class Repository:
         seen, queue = {symbol_id}, [symbol_id]
         while queue:
             current = queue.pop()
-            rows = self.db.execute('SELECT source FROM edge_lookup WHERE target=?', (current,)).fetchall()
-            for (source,) in rows:
+            incoming, _ = self._relation_edge_data(
+                current, direction='in', kind=None, include_unresolved=False)
+            for edge in incoming:
+                source = edge['source']
                 if source not in seen:
                     seen.add(source)
                     queue.append(source)
@@ -1386,7 +1471,7 @@ class Repository:
 
     def execute(self, tool, **arguments):
         read_only = {'find', 'task_matches', 'get', 'relations', 'refs', 'callers', 'callees',
-                     'dependencies', 'affected', 'status', 'metrics'}
+                     'dependencies', 'affected', 'semantic_status', 'status', 'metrics'}
         with self.locked(exclusive=tool not in read_only):
             self._index_checked = False
             self._manifest = None
@@ -1394,6 +1479,7 @@ class Repository:
 
     def _execute(self, tool, _read_only=False, **arguments):
         allowed = {'index', 'find', 'task_matches', 'get', 'relations', 'refs', 'callers', 'callees', 'dependencies', 'affected',
+                   'semantic_build', 'semantic_import', 'semantic_status',
                    'context', 'task_context', 'smart_context', 'prepare', 'warm', 'begin', 'update', 'diff', 'verify', 'test', 'commit',
                    'rollback', 'status', 'metrics'}
         if tool not in allowed:

@@ -96,7 +96,7 @@ def configure_client(target: str, output: str | Path, repository: str | Path,
     _write_json(hooks_path, _hook_config(command))
     _write_json(output / 'package.json', {
         'name': 'airp-dsh-adapter',
-        'version': '0.8.0',
+        'version': '0.9.0',
         'private': True,
         'dsh': {'bundle': {'patch': './cordis.patch.yml'}},
     })

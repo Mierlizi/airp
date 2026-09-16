@@ -8,7 +8,7 @@
     {
       "name": "airp",
       "source": "./plugins/airp",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "description": "Inject compact local repository evidence before model requests",
       "category": "Developer Tools",
       "tags": [

@@ -13,8 +13,16 @@ def parser():
     p = argparse.ArgumentParser(description='AIRP local multi-language repository tools')
     p.add_argument('--repo', default='.', help='Repository root (default: current directory)')
     sub = p.add_subparsers(dest='tool', required=True)
-    for name in ('index', 'status', 'metrics', 'hook-report', 'begin', 'diff', 'verify', 'commit', 'rollback', 'serve'):
+    for name in ('index', 'status', 'metrics', 'hook-report', 'semantic-status', 'begin', 'diff', 'verify', 'commit', 'rollback', 'serve'):
         sub.add_parser(name)
+    semantic_import = sub.add_parser('semantic-import')
+    semantic_import.add_argument('--file', type=Path, required=True)
+    semantic_build = sub.add_parser('semantic-build')
+    semantic_build.add_argument('language', choices=['rust', 'typescript'])
+    semantic_build.add_argument('--server')
+    semantic_build.add_argument('--server-arg', action='append', default=[])
+    semantic_build.add_argument('--max-symbols', type=int, default=200)
+    semantic_build.add_argument('--timeout', type=float, default=10.0)
     warm = sub.add_parser('warm')
     warm.add_argument('languages', nargs='+')
     find = sub.add_parser('find')
@@ -78,6 +86,14 @@ def main():
             elif decision.get('context'):
                 print(decision['context'])
             return
+        if tool == 'semantic-build':
+            args['server_args'] = args.pop('server_arg')
+            tool = 'semantic_build'
+        if tool == 'semantic-import':
+            args['document'] = json.loads(args.pop('file').read_text(encoding='utf-8'))
+            tool = 'semantic_import'
+        elif tool == 'semantic-status':
+            tool = 'semantic_status'
         if tool == 'serve':
             from .mcp_server import serve
             serve(root)

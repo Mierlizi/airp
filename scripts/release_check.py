@@ -14,11 +14,15 @@ REQUIRED = [
     '.claude-plugin/marketplace.json', 'plugins/airp/claude/hooks.json',
     'plugins/airp/hooks/hooks.json',
     'airp/protocol.py', 'plugins/airp/runtime/airp/protocol.py',
+    'airp/semantic.py', 'airp/lsp_semantic.py',
+    'plugins/airp/runtime/airp/semantic.py',
+    'plugins/airp/runtime/airp/lsp_semantic.py',
     'plugins/airp/runtime/airp/hook.py', 'plugins/airp/runtime/airp/diagnostics.py',
     'scripts/check_clean_install.py', 'scripts/check_integrations.py',
+    'scripts/check_semantic_backends.py',
     'scripts/configure_client.py', 'benchmarks/published/v1_verified_results.json',
     'benchmarks/published/engineering-routing-local-v36.json',
-    'docs/CROSS_CLIENT_COMPATIBILITY.md',
+    'docs/CROSS_CLIENT_COMPATIBILITY.md', 'docs/SEMANTIC_RELATION_BACKENDS.md',
 ]
 SCAN_ROOTS = ['airp', 'plugins', 'scripts', 'docs', 'README.md', 'pyproject.toml']
 BLOCKED = [re.compile('D:' + r'/program projects', re.I),

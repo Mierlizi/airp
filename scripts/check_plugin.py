@@ -26,6 +26,8 @@ def check(plugin: Path) -> None:
         # records the user's actual interpreter path in the installed copy.
         assert ('D:' + '/program projects') not in handlers[0]['command']
     assert (plugin / 'runtime/airp/hook.py').is_file()
+    assert (plugin / 'runtime/airp/semantic.py').is_file()
+    assert (plugin / 'runtime/airp/lsp_semantic.py').is_file()
     claude = json.loads((plugin / '.claude-plugin/plugin.json').read_text(encoding='utf-8'))
     assert claude['name'] == 'airp' and claude['hooks'] == './claude/hooks.json'
     claude_hooks = json.loads((plugin / 'claude/hooks.json').read_text(encoding='utf-8'))
