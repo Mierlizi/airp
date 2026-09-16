@@ -1,3 +1,4 @@
+import io
 import json
 import os
 from pathlib import Path
@@ -11,11 +12,13 @@ from unittest.mock import patch
 
 from airp.core import AirpError, Repository, task_identifiers
 from airp.hook import (
+    _estimated_saving_percent,
     _intent_for,
     _validation_hint,
     build_prompt_context,
     build_prompt_decision,
     is_code_task,
+    main as hook_main,
     process_hook,
 )
 
@@ -722,6 +725,44 @@ class RepositoryTests(unittest.TestCase):
         second_hash = re.search(r'payload_hash: ([0-9a-f]{16})', repeated).group(1)
         self.assertEqual(first_hash, second_hash)
 
+    def test_hook_reports_bounded_estimated_saving_only_when_enabled(self):
+        self.assertEqual(38.2, _estimated_saving_percent('enabled', 0.3824))
+        self.assertEqual(100.0, _estimated_saving_percent('enabled', 1.5))
+        self.assertIsNone(_estimated_saving_percent('enabled', -0.01))
+        self.assertIsNone(_estimated_saving_percent('skipped', 0.3824))
+
+    def test_enabled_hook_instructs_one_estimated_saving_footer(self):
+        decision = build_prompt_decision(
+            self.root, 'pricing.py 中 discount 函数返回什么？')
+
+        percent = decision['estimated_token_saving_percent']
+        self.assertEqual('enabled', decision['activation'])
+        self.assertGreater(percent, 0.0)
+        self.assertLessEqual(percent, 100.0)
+        self.assertEqual(round(decision['expected_saving'] * 100, 1), percent)
+        self.assertEqual(
+            1,
+            decision['context'].count(
+                f'response_footer: AIRP 估算本轮上下文 Token 节省：{percent:.1f}%'
+                '（相对原生检索基线）'))
+
+    def test_abstained_hook_does_not_request_saving_footer(self):
+        root = self.root / 'footer-abstention'
+        root.mkdir()
+        (root / 'target.py').write_text(
+            'class Target:\n'
+            '    def execute(self):\n'
+            '        return 7\n', encoding='utf-8')
+        for index in range(499):
+            (root / f'filler_{index}.py').write_text(
+                f'VALUE_{index} = {index}\n', encoding='utf-8')
+
+        decision = build_prompt_decision(root, 'Modify Target.execute to return 8.')
+
+        self.assertEqual('skipped', decision['activation'])
+        self.assertIsNone(decision['estimated_token_saving_percent'])
+        self.assertNotIn('response_footer:', decision['context'] or '')
+
     def test_hook_abstains_when_context_cost_exceeds_direct_read(self):
         root = self.root / 'tiny-low-benefit'
         root.mkdir()
@@ -943,6 +984,22 @@ class RepositoryTests(unittest.TestCase):
             PROJECT, 'Repository.execute中的read_only集合包含多少个操作？')
         self.assertIn('derived_facts: read_only cardinality = 12', context)
 
+    def test_hook_cli_emits_ascii_safe_json_for_cross_host_decoding(self):
+        payload = json.dumps({
+            'hook_event_name': 'UserPromptSubmit',
+            'cwd': str(self.root),
+            'prompt': 'What does the discount function do?',
+        })
+        stdout = io.StringIO()
+
+        with patch('sys.stdin', io.StringIO(payload)), patch('sys.stdout', stdout):
+            hook_main()
+
+        serialized = stdout.getvalue()
+        self.assertTrue(serialized.isascii())
+        context = json.loads(serialized)['hookSpecificOutput']['additionalContext']
+        self.assertIn('AIRP 估算本轮上下文 Token 节省', context)
+
     def test_hook_protocol_output_and_quiet_non_code_path(self):
         output = process_hook({
             'hook_event_name': 'UserPromptSubmit',
@@ -962,6 +1019,8 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(['enabled', 'skipped'],
                          [event['activation'] for event in events[-2:]])
         self.assertEqual('non_code_task', events[-1]['reason'])
+        self.assertGreater(events[-2]['estimated_token_saving_percent'], 0.0)
+        self.assertIsNone(events[-1]['estimated_token_saving_percent'])
         for event in events[-2:]:
             self.assertNotIn('prompt', event)
             self.assertNotIn('root', event)

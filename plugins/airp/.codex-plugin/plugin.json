@@ -1,6 +1,6 @@
 {
   "name": "airp",
-  "version": "0.9.0+codex.20260916054700",
+  "version": "0.9.1+codex.20260916141149",
   "description": "Cross-client pre-model repository context for AI coding agents.",
   "author": {
     "name": "Mierlizi"

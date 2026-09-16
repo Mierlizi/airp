@@ -483,6 +483,38 @@ def _atomic_context_blocks(text: str) -> list[str]:
 
 
 
+def _estimated_saving_percent(activation: str, expected_saving: float) -> float | None:
+    """Return a display-safe percentage only for an enabled, beneficial route."""
+    if activation != 'enabled' or not isinstance(expected_saving, (int, float)):
+        return None
+    if expected_saving < 0:
+        return None
+    return round(min(1.0, float(expected_saving)) * 100, 1)
+
+
+def _attach_saving_footer(payload: str, route: dict) -> tuple[str, dict, float | None]:
+    """Attach an honest, fixed-point saving estimate to sufficient context."""
+    base = payload
+    candidate = payload
+    for _ in range(5):
+        effective = _effective_route(route, len(candidate), False)
+        percent = _estimated_saving_percent('enabled', effective['expected_saving'])
+        if percent is None:
+            return base, effective, None
+        footer = (
+            f'estimated_token_saving_percent: {percent:.1f}\n'
+            f'response_footer: AIRP 估算本轮上下文 Token 节省：{percent:.1f}%'
+            '（相对原生检索基线）\n'
+        )
+        updated = base.replace('\n</airp-context>', '\n' + footer + '</airp-context>', 1)
+        if updated == candidate:
+            return updated, effective, percent
+        candidate = updated
+    effective = _effective_route(route, len(candidate), False)
+    percent = _estimated_saving_percent('enabled', effective['expected_saving'])
+    return candidate, effective, percent
+
+
 def _base_decision(started: float, **values) -> dict:
     decision = {
         'context': None,
@@ -499,6 +531,7 @@ def _base_decision(started: float, **values) -> dict:
         'expected_native_units': 0,
         'expected_followup_units': 0,
         'expected_saving': 0.0,
+        'estimated_token_saving_percent': None,
         'minimum_saving': 0.15,
     }
     decision.update(values)
@@ -725,6 +758,7 @@ def build_prompt_decision(root: str | Path, prompt: str,
                 f'evidence_chars: {len(evidence_text)}\n'
                 f'payload_hash: {payload_hash}\n')
         payload = header + receipt + evidence_text + suffix
+        payload, effective_route, estimated_percent = _attach_saving_footer(payload, route)
         if len(payload) > max_chars:
             return _base_decision(
                 started, reason='payload_limit', evidence_state='blocked-partial',
@@ -736,7 +770,8 @@ def build_prompt_decision(root: str | Path, prompt: str,
             evidence_state='sufficient', intent=intent, breadth=breadth,
             source_file_count=source_count, context_chars=len(payload),
             evidence_chars=len(evidence_text),
-            **_effective_route(route, len(payload), False))
+            estimated_token_saving_percent=estimated_percent,
+            **effective_route)
     except Exception as error:
         return _base_decision(
             started, activation='failed', reason='internal_error',
@@ -764,7 +799,7 @@ def main(host: str = 'codex') -> None:
     try:
         output = process_hook(json.load(sys.stdin), host=host)
         if output:
-            print(json.dumps(output, ensure_ascii=False, separators=(',', ':')))
+            print(json.dumps(output, ensure_ascii=True, separators=(',', ':')))
     except Exception:
         # Retrieval is an optimization. A hook failure must not block the user's task.
         return

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1 - 2026-09-16
+
+- Add an enabled-route context-saving estimate to the injected AIRP receipt.
+- Append the estimate exactly once to final answers through the AIRP skill contract.
+- Omit the footer for partial, abstained, skipped, failed, or negative-saving routes.
+- Record the bounded percentage in privacy-preserving local Hook diagnostics.
+- Serialize Hook JSON as ASCII-safe UTF-8-compatible output across Windows host code pages.
+- Label the estimate as a deterministic context-input proxy rather than billed tokens.
 ## 0.9.0 - 2026-09-16
 
 - Add a revision-bound semantic relationship overlay with strict endpoint validation.

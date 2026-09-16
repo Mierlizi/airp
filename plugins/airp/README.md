@@ -2,6 +2,8 @@
 
 AIRP uses a `UserPromptSubmit` hook to build repository evidence locally and inject it before the first model request. This removes the extra model → MCP → model round trip that caused short code tasks to consume more total tokens even when AIRP's response itself was compact.
 
+When AIRP actually enables sufficient context, the injected receipt includes a bounded estimated context-saving percentage and a final-response footer. The skill appends that footer exactly once to the final answer. Abstained, skipped, partial, and failed routes omit it. This is a deterministic UTF-8-byte/tool-envelope proxy against native retrieval, not billed tokens or total conversation cost.
+
 The hook applies to code tasks of every size. Exact symbol and file questions receive a small narrow pack; multi-symbol work receives a balanced pack; dependency, call-chain, and impact questions receive a broader pack. It also selects understand, impact, edit, or test evidence from the task semantics. Non-code chat adds no context. The injected block tells the agent which source evidence is sufficient and when a focused follow-up read is necessary.
 
 The expanded local audit covers 24 tasks across exact facts, behavior reasoning, workflow semantics, relationship impact, hook protocol, and language scope. AIRP produced sufficient evidence for 24/24 tasks while reducing hook payload tokens by 20.01% relative to the compact MCP JSON response. The paired 48-call Agent experiment reduced total model tokens by 59.06%; a subsequent targeted fix added complete transitive bodies for value-computation tasks and deterministic cardinality facts for collection-count questions.

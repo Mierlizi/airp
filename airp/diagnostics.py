@@ -14,7 +14,8 @@ _ALLOWED_FIELDS = {
     'host', 'activation', 'reason', 'evidence_state', 'intent', 'breadth',
     'source_file_count', 'context_chars', 'evidence_chars', 'omitted_blocks',
     'expected_airp_units', 'expected_native_units', 'expected_followup_units',
-    'expected_saving', 'minimum_saving', 'elapsed_ms', 'exception_type',
+    'expected_saving', 'estimated_token_saving_percent', 'minimum_saving',
+    'elapsed_ms', 'exception_type',
 }
 
 

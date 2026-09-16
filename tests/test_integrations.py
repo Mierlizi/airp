@@ -102,7 +102,7 @@ class CrossClientIntegrationTests(unittest.TestCase):
         self.assertIn('--host deepseek-harness', command)
         self.assertIn("@deepseek-ai/dsh-hooks-codex", patch)
         self.assertIn((output / 'hooks.json').resolve().as_posix(), patch)
-        self.assertEqual('0.9.0', package['version'])
+        self.assertEqual('0.9.1', package['version'])
         self.assertEqual('./cordis.patch.yml', package['dsh']['bundle']['patch'])
         self.assertEqual('dsh plugin --profile', result['next_command'][0])
 
